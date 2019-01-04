@@ -44,14 +44,14 @@ solver_out = Function(W)
 
 params = {
     'mat_type': 'matfree',
-    'ksp_monitor': True,
-    'ksp_monitor_true_residual': True,
+    #'ksp_converged_reason':True,
+    #'ksp_monitor_true_residual': True,
     'ksp_type': 'fgmres',
     'pc_type': 'python',
     'pc_python_type': 'firedrake.HybridizationPC',
     'hybridization': {'ksp_type': 'gmres',
-                      'ksp_monitor':True,
-                      'ksp_converged_reason':True,
+                      #'ksp_monitor':True,
+                      #'ksp_converged_reason':True,
                       'pc_type': 'gamg'}}
 
 Prob = LinearVariationalProblem(a, F, solver_out)
@@ -85,13 +85,13 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 exp_op = krylov_exp(Solver, solver_in, solver_out, gamma,
                     40, OperatorSolver, operator_in, operator_out)
 
-x = Function(W)
-ux, hx = x.split()
+x0 = Function(W)
+ux, hx = x0.split()
 hx.interpolate(exp((x+y+z)/R)*x*y*z/R**3)
-y = Function(W)
+y0 = Function(W)
 
-exp_op.apply(x, y, t=t)
+exp_op.apply(x0, y0, t=t)
 
-uy, hy = y.split()
+uy, hy = y0.split()
 
 File('exp.pvd').write(uy,hy)
