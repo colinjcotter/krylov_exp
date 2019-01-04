@@ -68,14 +68,14 @@ class krylov_exp(object):
 
             self.H[j+1,j] = norm(w)
 
-            V[j+1].assign(w)
+            V[j+1].assign(w/self.H[j+1,j])
 
             #exponential and residual calculation
             e1 = np.zeros(j); e1[0] = 1
             ej = np.zeros(j); ej[j] = 1
             Hinv = sp.linalg.inv(self.H[:j+1,:j+1])
             H1 = (Hinv - np.eye(j))/gamma
-            s0   = [1/3, 2/3, 1];
+            s0   = [1./3, 2./3, 1.];
             res = 0.*s0
             for q, s in enumerate(s0):
                 u = np.multiply(sp.linalg.sparse.expm(-H1*s*t),e1)*beta
