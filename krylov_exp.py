@@ -47,7 +47,7 @@ class krylov_exp(object):
         #Working memory to avoid issues with mixed fields
         self.uw = Function(FS)
         
-    def apply(self, x, y, t):
+    def apply(self, x, y, t, its=-999):
         """
         takes x, applies exp(At), places result in y
         """
@@ -62,7 +62,11 @@ class krylov_exp(object):
         V = self.krylov_subspace
         V[0].assign(x)
         V[0] /= beta
-        for j in range(kdim):
+
+        if its < 0:
+            its = self.kdim
+        assert(its <= self.kdim)
+        for j in range(its):
             self.solver_in.assign(self.krylov_subspace[j])
             self.solver.solve()
 
@@ -96,7 +100,10 @@ class krylov_exp(object):
             residual = sp.linalg.norm(res, ord=np.inf)
             print("Residual", residual)
         y.assign(0.)
-        for j in range(self.kdim):
+        print(u)
+        for j in range(its):
             self.uw.assign(V[j])
-            self.uw *= beta*u[j][0]
+            self.uw *= u[j][0]
             y += self.uw
+
+        y *= beta
