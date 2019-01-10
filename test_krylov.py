@@ -3,7 +3,7 @@ from firedrake import *
 
 n = 50
 R = 6371220.
-H = 5960.
+H = Constant(5960.)
 
 mesh = IcosahedralSphereMesh(radius=R, refinement_level=5, degree=3)
 x = SpatialCoordinate(mesh)
@@ -29,10 +29,12 @@ hour = 60*60
 t = hours*hour
 gamma = Constant(t/10)
 
+c = sqrt(g*H)
+
 a = (
     inner(u,v)*dx - inner(f*gamma*perp(u),v)*dx
-    +gamma*g*h*div(v)*dx
-    +h*phi*dx - H*gamma*div(u)*phi*dx
+    +gamma*c*h*div(v)*dx
+    +h*phi*dx - c*gamma*div(u)*phi*dx
 )
 
 solver_in = Function(W)
@@ -64,8 +66,8 @@ u_in, h_in = split(solver_in)
 
 F = (
     inner(u_in,v)*dx - inner(f*gamma*perp(u_in),v)*dx
-    +gamma*g*h_in*div(v)*dx
-    +h_in*phi*dx - H*gamma*div(u_in)*phi*dx
+    +gamma*c*h_in*div(v)*dx
+    +h_in*phi*dx - c*gamma*div(u_in)*phi*dx
 )
 
 a = inner(v,u)*dx + phi*h*dx
