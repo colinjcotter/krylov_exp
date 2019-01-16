@@ -1,23 +1,33 @@
 from firedrake import *
-from numpy.random import randn
 
-def max_sv(operator_solver, operator_in, operator_out):
+class krylov_exp(object):
+    def __init__(self, operator_solver, operator_in, operator_out):
+        """
+        Class to apply the exponential of an operator
+        using Shift-and-Invert (SAI) Krylov subspace scheme
 
-    n = operator_in.dat.data[0][:].size
-    operator_in.dat.data[0][:] = randn(n)
-    n = operator_in.dat.data[1][:].size
-    operator_in.dat.data[1][:] = randn(n)
+        solver: The VariationalLinearSolver implementing the 
+        Shift-and-Invert
+        solver_in: The Function taken as input to solver
+        solver_out: The Function taken as ouput to solver
+        gamma: A Constant that specifies the shift parameter
+        
+        kdim: the maximum dimension of the krylov subspace
 
-    #power method on -L^2
- 
-    i = -1
-    while True:
-        i += 1
-        norm = assemble(inner(operator_in, operator_in)*dx)**0.5
-        print("norm", norm, "value", norm**0.5, i)
-        operator_in /= -norm
+        operator_solver: a VariationalLinearSolver implementing
+        the forward operator for Shift-and-Invert (used for residual
+        calculation)
+        operator_in: the input to operator_solver
+        operator_out: the output to operator_solver
+        """
 
-        operator_solver.solve()
-        operator_in.assign(operator_out)
-        operator_solver.solve()
-        operator_in.assign(operator_out)
+        self.solver = solver
+        self.solver_in = solver_in
+        self.solver_out = solver_out
+        self.gamma = gamma
+
+        self.kdim = kdim
+
+        self.operator_solver = operator_solver
+        self.operator_in = operator_in
+        self.operator_out = operator_out
