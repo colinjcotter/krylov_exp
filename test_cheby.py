@@ -2,11 +2,10 @@ from krylov_exp import *
 from cheby_exp import *
 from firedrake import *
 
-n = 50
 R = 6371220.
 H = Constant(5960.)
 
-mesh = IcosahedralSphereMesh(radius=R, refinement_level=5, degree=3)
+mesh = IcosahedralSphereMesh(radius=R, refinement_level=6, degree=3)
 x = SpatialCoordinate(mesh)
 mesh.init_cell_orientations(x)
 
@@ -23,7 +22,7 @@ u, h = TrialFunctions(W)
 v, phi = TestFunctions(W)
 
 Omega = Constant(7.292e-5)  # rotation rate
-f = 2*Omega*z/R  # Coriolis parameter
+f = 2*Omega*z/Constant(R)  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
 hours = 2.
 hour = 60*60
@@ -53,7 +52,11 @@ params = {
     'fieldsplit_1_pc_type':'lu'
 }
 
+sparams = {
+    'ksp_converged_reason':True
+}
+
 Prob = LinearVariationalProblem(a, F, operator_out)
-OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
+OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=sparams)
 
 max_sv(OperatorSolver, operator_in, operator_out)
