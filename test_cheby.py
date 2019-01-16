@@ -1,11 +1,13 @@
-from krylov_exp import *
 from cheby_exp import *
 from firedrake import *
 
 R = 6371220.
 H = Constant(5960.)
 
-mesh = IcosahedralSphereMesh(radius=R, refinement_level=6, degree=3)
+ref_level = 3
+
+mesh = IcosahedralSphereMesh(radius=R,
+                             refinement_level=ref_level, degree=3)
 x = SpatialCoordinate(mesh)
 mesh.init_cell_orientations(x)
 
@@ -59,4 +61,18 @@ sparams = {
 Prob = LinearVariationalProblem(a, F, operator_out)
 OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=sparams)
 
-max_sv(OperatorSolver, operator_in, operator_out)
+eigs = [0.003465, 0.007274, 0.014955]
+days = 1
+t = 60*60*days
+L = eigs[ref_level]*t
+
+
+cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
+                  ncheb, tol=1.0e-14, L)
+
+x0 = Function(W)
+ux, hx = x0.split()
+hx.interpolate(exp((x+y+z)/R)*x*y*z/R**3)
+y0 = Function(W)
+
+cheby.apply(x0, y0, t)
