@@ -25,19 +25,28 @@ class cheby_exp(object):
         self.operator_in = operator_in
         self.operator_out = operator_out
 
-        t1 = np.arange(np,pi, -dpi/2, -np.pi/(ncheb+1))
+        dpi = np.pi/(ncheb+1)
+        t1 = np.arange(np.pi, -dpi/2, -dpi)
         x = L*np.cos(t1)
+        fvals = np.real(np.exp(np.pi*1j*x))
         thetas = np.concatenate((np.flipud(t1), -t1[1:-1]))
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
         FourierCoeffs = np.real(fftpack.fft(valsUnitDisc))/ncheb
         
         self.ChebCoeffs = FourierCoeffs[:ncheb+2]
-        self.ChebCoeffs[0] = ChebCoeffs[0]/2
-        self.ChebCoeffs[-1] = ChebCoeffs[-1]/2
+        self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
+        self.ChebCoeffs[-1] = self.ChebCoeffs[-1]/2
 
+        nrm = 0.
+        while nrm < tol:
+            nrm += abs(self.ChebCoeffs[ncheb+1])
+            ncheb -= 1
+            print(nrm,ncheb)
+        
         self.ncheb = ncheb
+        self.L = L
 
-        FS = solver_in.function_space()
+        FS = operator_in.function_space()
         self.Tm1_r = Function(FS)
         self.Tm1_i = Function(FS)
         self.Tm2_r = Function(FS)
@@ -48,6 +57,7 @@ class cheby_exp(object):
         self.dy = Function(FS)
         
     def apply(self, x, y, t):
+        L = self.L
         #T_0(x) = x^0 i.e. T_0(A) = I, T_0(A)U = U
         self.Tm1_r.assign(x)
         self.Tm1_i.assign(0)
@@ -59,7 +69,7 @@ class cheby_exp(object):
         
         #T_0(x) = x^1/(i*L) i.e. T_1(A) = -i*A/L, T_0(A)U = -i*AU/L
         self.operator_in.assign(x)
-        self.operator_solver.apply()
+        self.operator_solver.solve()
         self.T_r.assign(0)
         self.T_i.assign(self.operator_out)
         self.T_i *= -1/L
@@ -67,19 +77,20 @@ class cheby_exp(object):
         self.dy.assign(self.T_r)
         self.dy *= self.ChebCoeffs[1]
         y += self.dy
-        
+
         for i in range(2, self.ncheb+1):
+            #print(i, self.ncheb+1)
             self.Tm2_r.assign(self.Tm1_r)
             self.Tm2_i.assign(self.Tm1_i)
             self.Tm1_r.assign(self.T_r)
             self.Tm1_i.assign(self.T_i)
 
             self.operator_in.assign(self.Tm1_r)
-            self.operator_solver.apply()
+            self.operator_solver.solve()
             self.T_i.assign(self.operator_out)
             self.T_i *= -2/L
             self.operator_in.assign(self.Tm1_i)
-            self.operator_solver.apply()
+            self.operator_solver.solve()
             self.T_r.assign(self.operator_out)
             self.T_r *= 2/L
 
