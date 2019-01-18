@@ -26,14 +26,14 @@ v, phi = TestFunctions(W)
 Omega = Constant(7.292e-5)  # rotation rate
 f = 2*Omega*cz/Constant(R)  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
-hours = 2.
-hour = 60*60
-t = hours*hour
 
 c = sqrt(g*H)
 
 operator_in = Function(W)
 u_in, h_in = split(operator_in)
+
+u, h = TrialFunctions(W)
+v, phi = TestFunctions(W)
 
 F = (
     - inner(f*perp(u_in),v)*dx
@@ -42,6 +42,9 @@ F = (
 )
 
 a = inner(v,u)*dx + phi*h*dx
+
+assemble(a)
+assemble(F)
 
 operator_out = Function(W)
 
@@ -58,8 +61,8 @@ Prob = LinearVariationalProblem(a, F, operator_out)
 OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 
 eigs = [0.003465, 0.007274, 0.014955]
-days = 1
-t = 60*60*days
+hours = 0.1
+t = 60*60*hours
 L = eigs[ref_level-3]*t
 ncheb = 1000
 
@@ -112,14 +115,13 @@ params = {
 Prob = LinearVariationalProblem(a, F, solver_out)
 Solver = LinearVariationalSolver(Prob, solver_parameters=params)
 
-t0 = 0.
-solver_in.assign(x0)
-print("time integration")
-while(t0 < t + 0.5*dt):
-    print(t0)
-    t0 += dt
-    Solver.solve()
-    solver_in.assign(solver_out)
-
-y0.assign(solver_out)
-file0.write(uy, hy)
+#t0 = 0.
+#solver_in.assign(x0)
+#print("time integration")
+#while(t0 < t + 0.5*dt):
+#    print(t0)
+#    t0 += dt
+#    Solver.solve()
+#    solver_in.assign(solver_out)
+#y0.assign(solver_out)
+#file0.write(uy, hy)
