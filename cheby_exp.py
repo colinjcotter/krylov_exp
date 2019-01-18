@@ -28,9 +28,9 @@ class cheby_exp(object):
         dpi = np.pi/(ncheb+1)
         t1 = np.arange(np.pi, -dpi/2, -dpi)
         x = L*np.cos(t1)
-        fvals = np.real(np.exp(np.pi*1j*x))
+        fvals = np.exp(np.pi*1j*x)
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
-        FourierCoeffs = np.real(fftpack.fft(valsUnitDisc))/ncheb
+        FourierCoeffs = fftpack.fft(valsUnitDisc)/ncheb
 
         self.ChebCoeffs = FourierCoeffs[:ncheb+2]
         self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
@@ -61,19 +61,12 @@ class cheby_exp(object):
         #T_0(x) = x^0 i.e. T_0(A) = I, T_0(A)U = U
         self.Tm1_r.assign(x)
         self.Tm1_i.assign(0)
-
-        #debugging s
-        A = np.array([[0,-1],[1,0]])*0.003
-        v = np.array([[1.],[0.]])
-        Tm1r_s = 1.0*v
-        Tm1i_s = 0.
-        ys = self.ChebCoeffs[0]*Tm1r_s
         
         Coeff = Constant(1)
 
         y.assign(0.)
         self.dy.assign(self.Tm1_r)
-        Coeff.assign(self.ChebCoeffs[0])
+        Coeff.assign(np.real(self.ChebCoeffs[0]))
         self.dy *= Coeff
         y += self.dy
         
@@ -84,14 +77,9 @@ class cheby_exp(object):
         self.T_i.assign(self.operator_out)
         self.T_i *= -t/L
 
-        #debugging s
-        Tr_s = 0*v
-        Ti_s = -t*np.dot(A,v)/L
-        ys += self.ChebCoeffs[1]*Tr_s
-
-        self.dy.assign(self.T_r)
-        Coeff.assign(self.ChebCoeffs[1])
-        self.dy *= Coeff
+        self.dy.assign(self.T_i)
+        Coeff.assign(np.imag(self.ChebCoeffs[1]))
+        self.dy *= -Coeff
         y += self.dy
 
         for i in range(2, self.ncheb+1):
@@ -100,12 +88,6 @@ class cheby_exp(object):
             self.Tm2_i.assign(self.Tm1_i)
             self.Tm1_r.assign(self.T_r)
             self.Tm1_i.assign(self.T_i)
-
-            #debugging s
-            Tm2r_s = 1.0*Tm1r_s
-            Tm2i_s = 1.0*Tm2r_s
-            Tm1r_s = 1.0*Tr_s
-            Tm1i_s = 1.0*Ti_s
 
             #Tn = 2*t*A*Tnm1/(L*1j) - Tnm2
             self.operator_in.assign(self.Tm1_r)
@@ -121,14 +103,11 @@ class cheby_exp(object):
             self.T_r -= self.Tm2_r
 
             self.dy.assign(self.T_r)
-            Coeff.assign(self.ChebCoeffs[i])
+            Coeff.assign(real(self.ChebCoeffs[i]))
             self.dy *= Coeff
             y += self.dy
 
-            #debugging s
-            Ti_s = -2*t/L*np.dot(A,Tm1r_s) - Tm2i_s
-            Tr_s = 2*t/L*np.dot(A,Tm1i_s) - Tm2r_s
-            ys += Tr_s*self.ChebCoeffs[i]
-
-        import math
-        print(np.dot(np.exp(t*A),v), ys)
+            self.dy.assign(self.T_i)
+            Coeff.assign(imag(self.ChebCoeffs[i]))
+            self.dy *= -Coeff
+            y += self.dy
