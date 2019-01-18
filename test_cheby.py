@@ -51,7 +51,7 @@ operator_out = Function(W)
 params = {
     'ksp_type': 'preonly',
     'pc_type': 'fieldsplit',
-    'fieldsplit_0_ksp_type':'preonly',
+    'fieldsplit_0_ksp_type':'cg',
     'fieldsplit_0_pc_type':'sor',
     'fieldsplit_1_ksp_type':'preonly',
     'fieldsplit_1_pc_type':'ilu'
@@ -61,13 +61,14 @@ Prob = LinearVariationalProblem(a, F, operator_out)
 OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 
 eigs = [0.003465, 0.007274, 0.014955]
-hours = 0.1
+hours = 0.5
 t = 60*60*hours
 L = eigs[ref_level-3]*t
+print("L",L)
 ncheb = 1000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-5, L=L)
+                  ncheb, tol=1.0e-6, L=L)
 
 x0 = Function(W)
 ux, hx = x0.split()
@@ -115,13 +116,13 @@ params = {
 Prob = LinearVariationalProblem(a, F, solver_out)
 Solver = LinearVariationalSolver(Prob, solver_parameters=params)
 
-#t0 = 0.
-#solver_in.assign(x0)
-#print("time integration")
-#while(t0 < t + 0.5*dt):
-#    print(t0)
-#    t0 += dt
-#    Solver.solve()
-#    solver_in.assign(solver_out)
-#y0.assign(solver_out)
-#file0.write(uy, hy)
+t0 = 0.
+solver_in.assign(x0)
+print("time integration")
+while(t0 < t + 0.5*dt):
+    print(t0)
+    t0 += dt
+    Solver.solve()
+    solver_in.assign(solver_out)
+y0.assign(solver_out)
+file0.write(uy, hy)

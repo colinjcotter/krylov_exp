@@ -28,14 +28,14 @@ class cheby_exp(object):
         dpi = np.pi/(ncheb+1)
         t1 = np.arange(np.pi, -dpi/2, -dpi)
         x = L*np.cos(t1)
-        fvals = np.exp(np.pi*1j*x)
+        fvals = np.exp(1j*x)
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
         FourierCoeffs = fftpack.fft(valsUnitDisc)/ncheb
 
         self.ChebCoeffs = FourierCoeffs[:ncheb+2]
         self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
         self.ChebCoeffs[-1] = self.ChebCoeffs[-1]/2
-
+        
         #cheby compression
         nrm = 0.
         while nrm < tol:
@@ -45,6 +45,7 @@ class cheby_exp(object):
         self.ncheb = ncheb
         self.L = L
         print(self.ChebCoeffs[:ncheb+1])
+        print(self.ChebCoeffs[ncheb+1:3*ncheb+1])
 
         FS = operator_in.function_space()
         self.Tm1_r = Function(FS)
@@ -58,7 +59,8 @@ class cheby_exp(object):
         
     def apply(self, x, y, t):
         L = self.L
-        #T_0(x) = x^0 i.e. T_0(A) = I, T_0(A)U = U
+        #initially Tm1 contains T_0(A)x
+        #T_0(x) = x^0 i.e. T_0(tA) = I, T_0(tA)x = x
         self.Tm1_r.assign(x)
         self.Tm1_i.assign(0)
         
@@ -70,7 +72,8 @@ class cheby_exp(object):
         self.dy *= Coeff
         y += self.dy
         
-        #T_1(x) = x^1/(i*L) i.e. T_1(tA) = -i*tA/L, T_1(tA)U = -i*tAU/L
+        #initially T contains T_1(tA)x
+        #T_1(x) = x^1/(i*L) i.e. T_1(tA) = -i*tA/L, T_1(tA)x = -i*tAx/L
         self.operator_in.assign(x)
         self.operator_solver.solve()
         self.T_r.assign(0)
