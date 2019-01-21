@@ -61,11 +61,11 @@ Prob = LinearVariationalProblem(a, F, operator_out)
 OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 
 eigs = [0.003465, 0.007274, 0.014955]
-hours = 0.5
+hours = 6
 t = 60*60*hours
 L = eigs[ref_level-3]*t
 print("L",L)
-ncheb = 1000
+ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
                   ncheb, tol=1.0e-6, L=L)
