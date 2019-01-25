@@ -44,8 +44,6 @@ class cheby_exp(object):
 
         self.ncheb = ncheb
         self.L = L
-        print(self.ChebCoeffs[:ncheb+1])
-        print(self.ChebCoeffs[ncheb+1:3*ncheb+1])
 
         FS = operator_in.function_space()
         self.Tm1_r = Function(FS)
@@ -86,7 +84,6 @@ class cheby_exp(object):
         y += self.dy
 
         for i in range(2, self.ncheb+1):
-            print(i, self.ncheb+1)
             self.Tm2_r.assign(self.Tm1_r)
             self.Tm2_i.assign(self.Tm1_i)
             self.Tm1_r.assign(self.T_r)

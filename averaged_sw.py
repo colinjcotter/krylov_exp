@@ -10,7 +10,6 @@ hours = 6
 dt = 60*60*hours
 L = eigs[ref_level-3]*dt
 Mbar = int(3*dt/min_time_period)
-
 assert Mbar <= COMM_WORLD.size, "Mbar = "+str(Mbar)
 
 #ensemble communicator
@@ -46,7 +45,7 @@ c = sqrt(g*H)
 
 #Set up the exponential operator
 operator_in = Function(W)
-u_in, h_in = split(operator_in)
+u_in, eta_in = split(operator_in)
 
 u, eta = TrialFunctions(W)
 v, phi = TestFunctions(W)
@@ -107,7 +106,7 @@ L = (
     + dT*div(v)*K*dx
     + dT*inner(grad(phi), u0*(eta0-b))*dx
     - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
-                    - uup('-')*(eta0('-') - b('-'))*dS)
+                    - uup('-')*(eta0('-') - b('-')))*dS
 )
 #with topography, D = H + eta - b
 
@@ -118,7 +117,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 t = 0.
 tmax = 60.*60.*24.*15
 
-tvals = (np.arange(0,M*1.0)/(M-1)-0.5)*dt
+tvals = (np.arange(0,Mbar*1.0)/(Mbar-1)-0.5)*dt
 rank = ensemble_comm.rank
 expt = tvals[rank]
 
@@ -159,6 +158,8 @@ if rank==0:
     file_sw.write((un, etan))
 
 while t < tmax + 0.5*dt:
+    if rank==0:
+        print(t)
 
     #apply forward transformation and put result in V
     cheby.apply(U, V, expt)
