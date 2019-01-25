@@ -2,12 +2,16 @@ from cheby_exp import *
 from firedrake import *
 import numpy as np
 
+#picking cheby parameters based on ref_level
+ref_level = 3
 eigs = [0.003465, 0.007274, 0.014955]
-min_time_period = 2*pi/eigs(ref_level-3)
+min_time_period = 2*pi/eigs[ref_level-3]
 hours = 6
 dt = 60*60*hours
 L = eigs[ref_level-3]*dt
 Mbar = int(3*dt/min_time_period)
+
+assert Mbar <= COMM_WORLD.size, "Mbar = "+str(Mbar)
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, Mbar)
@@ -15,8 +19,6 @@ ensemble = Ensemble(COMM_WORLD, Mbar)
 #some domain, parameters and FS setup
 R = 6371220.
 H = Constant(5960.)
-
-ref_level = 4
 
 mesh = IcosahedralSphereMesh(radius=R,
                              refinement_level=ref_level, degree=3,
