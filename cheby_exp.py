@@ -84,6 +84,8 @@ class cheby_exp(object):
         y += self.dy
 
         for i in range(2, self.ncheb+1):
+            if rank == 0:
+                print(i)
             self.Tm2_r.assign(self.Tm1_r)
             self.Tm2_i.assign(self.Tm1_i)
             self.Tm1_r.assign(self.T_r)
