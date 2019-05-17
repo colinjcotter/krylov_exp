@@ -2,6 +2,9 @@ from firedrake import *
 import numpy as np
 from scipy import fftpack
 
+from firedrake.petsc import PETSc
+print = PETSc.Sys.Print
+
 class cheby_exp(object):
     def __init__(self, operator_solver, operator_in, operator_out,
                  ncheb, tol, L):

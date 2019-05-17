@@ -74,9 +74,11 @@ params = {
     'ksp_type': 'preonly',
     'pc_type': 'fieldsplit',
     'fieldsplit_0_ksp_type':'cg',
-    'fieldsplit_0_pc_type':'sor',
+    'fieldsplit_0_pc_type':'bjacobi',
+    'fieldsplit_0_sub_pc_type':'ilu',
     'fieldsplit_1_ksp_type':'preonly',
-    'fieldsplit_1_pc_type':'ilu'
+    'fieldsplit_1_pc_type':'bjacobi',
+    'fieldsplit_1_sub_pc_type':'ilu'
 }
 
 print("building solver for Cheby")
@@ -167,12 +169,15 @@ if rank==0:
 
 while t < tmax + 0.5*dt:
     print(t)
+    t += dt
 
     #apply forward transformation and put result in V
+    print("cheby")
     cheby.apply(U, V, expt)
     
     #apply forward slow step to V
     for i in range(ncycles):
+        print("forward "+str(i))
         USlow_in.assign(V)
         SlowSolver.solve()
         USlow_in.assign(USlow_out)
@@ -180,13 +185,16 @@ while t < tmax + 0.5*dt:
         V.assign(USlow_in)
 
     #apply backwards transformation, put result in U
+    print("cheby backwards")
     cheby.apply(U, V, -expt)
 
     #average into V
-    manager.allreduce(U, V)
+    print("reduction")
+    ensemble.allreduce(U, V)
     V /= Mbar
 
     #transform forwards to next timestep
+    print("cheby forwards")
     cheby.apply(V, U, dt)
 
     un.assign(U_u)
