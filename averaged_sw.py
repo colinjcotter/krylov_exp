@@ -1,7 +1,9 @@
-print("importing")
 from cheby_exp import *
 from firedrake import *
 import numpy as np
+
+from firedrake.petsc import PETSc
+print = PETSc.Sys.Print
 
 #picking cheby parameters based on ref_level
 ref_level = 3
@@ -11,7 +13,7 @@ hours = 6
 dt = 60*60*hours
 L = eigs[ref_level-3]*dt
 Mbar = int(3*dt/min_time_period)
-assert Mbar <= COMM_WORLD.size, "Mbar = "+str(Mbar)
+assert Mbar <= COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
 print("We are off")
 
@@ -62,6 +64,7 @@ F = (
 
 a = inner(v,u)*dx + phi*eta*dx
 
+print("Forcing some assembly")
 assemble(a)
 assemble(F)
 
@@ -124,7 +127,7 @@ t = 0.
 tmax = 60.*60.*24.*15
 
 tvals = (np.arange(0,Mbar*1.0)/(Mbar-1)-0.5)*dt
-rank = ensemble.comm.rank
+rank = ensemble.ensemble_comm.rank
 expt = tvals[rank]
 
 x = SpatialCoordinate(mesh)
@@ -157,9 +160,10 @@ V_u, V_eta = V.split()
 U_u.assign(un)
 U_eta.assign(etan)
 
+print("going for output")
 if rank==0:
-    file_sw = File('averaged_sw.pvd')
-    file_sw.write((un, etan))
+    file_sw = File('averaged_sw.pvd', comm=ensemble.comm)
+    file_sw.write(un, etan)
 
 while t < tmax + 0.5*dt:
     print(t)
@@ -189,4 +193,4 @@ while t < tmax + 0.5*dt:
     etan.assign(U_eta)
 
     if rank == 0:
-        file_sw.write((un, etan))
+        file_sw.write(un, etan)
