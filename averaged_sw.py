@@ -11,14 +11,16 @@ eigs = [0.003465, 0.007274, 0.014955]
 min_time_period = 2*pi/eigs[ref_level-3]
 hours = 6
 dt = 60*60*hours
-L = eigs[ref_level-3]*dt
-Mbar = int(3*dt/min_time_period)
-assert Mbar <= COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
+rho = 1.0 #averaging window is rho*dt
+
+L = eigs[ref_level-3]*dt*rho
+Mbar = int(3*rho*dt/min_time_period)
+assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
 print("We are off")
 
 #ensemble communicator
-ensemble = Ensemble(COMM_WORLD, Mbar)
+ensemble = Ensemble(COMM_WORLD, 1)
 
 #some domain, parameters and FS setup
 R0 = 6371220.
@@ -128,7 +130,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 t = 0.
 tmax = 60.*60.*24.*15
 
-tvals = (np.arange(0,Mbar*1.0)/(Mbar-1)-0.5)*dt
+tvals = rho*(np.arange(0,Mbar*1.0)/(Mbar-1)-0.5)*dt
 rank = ensemble.ensemble_comm.rank
 expt = tvals[rank]
 
