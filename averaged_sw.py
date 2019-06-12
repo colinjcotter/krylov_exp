@@ -17,7 +17,6 @@ L = eigs[ref_level-3]*dt*rho
 Mbar = int(3*rho*dt/min_time_period)
 assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
-print("We are off")
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
@@ -26,7 +25,6 @@ ensemble = Ensemble(COMM_WORLD, 1)
 R0 = 6371220.
 H = Constant(5960.)
 
-print("building mesh")
 mesh = IcosahedralSphereMesh(radius=R0,
                              refinement_level=ref_level, degree=3,
                              comm = ensemble.comm)
@@ -66,10 +64,6 @@ F = (
 
 a = inner(v,u)*dx + phi*eta*dx
 
-print("Forcing some assembly")
-assemble(a)
-assemble(F)
-
 operator_out = Function(W)
 
 params = {
@@ -83,7 +77,6 @@ params = {
     'fieldsplit_1_sub_pc_type':'ilu'
 }
 
-print("building solver for Cheby")
 Prob = LinearVariationalProblem(a, F, operator_out)
 OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 
@@ -122,7 +115,6 @@ L = (
 )
 #with topography, D = H + eta - b
 
-print("building solver for slow problem")
 SlowProb = LinearVariationalProblem(a, L, USlow_in)
 SlowSolver = LinearVariationalSolver(SlowProb,
                                      solver_parameters = params)
@@ -141,7 +133,7 @@ u_max = Constant(u_0)
 u_expr = as_vector([-u_max*x[1]/R0, u_max*x[0]/R0, 0.0])
 eta_expr = - ((R0 * Omega * u_max + u_max*u_max/2.0)*(x[2]*x[2]/(R0*R0)))/g
 un = Function(V1).project(u_expr)
-etan = Function(V2).interpolate(eta_expr)
+etan = Function(V2).project(eta_expr)
 
 # Topography
 rl = pi/9.0
@@ -164,39 +156,35 @@ V_u, V_eta = V.split()
 U_u.assign(un)
 U_eta.assign(etan)
 
-print("going for output")
 if rank==0:
     file_sw = File('averaged_sw.pvd', comm=ensemble.comm)
     file_sw.write(un, etan)
 
+nonlinear = False
+
 while t < tmax + 0.5*dt:
-    print(t)
     t += dt
 
-    #apply forward transformation and put result in V
-    print("cheby")
-    cheby.apply(U, V, expt)
-    
-    #apply forward slow step to V
-    for i in range(ncycles):
-        print("forward "+str(i))
-        USlow_in.assign(V)
-        SlowSolver.solve()
-        USlow_in.assign(USlow_out)
-        SlowSolver.solve()
-        V.assign(USlow_in)
+    if nonlinear:
+        #apply forward transformation and put result in V
+        cheby.apply(U, V, expt)
+        
+        #apply forward slow step to V
+        for i in range(ncycles):
+            USlow_in.assign(V)
+            SlowSolver.solve()
+            USlow_in.assign(USlow_out)
+            SlowSolver.solve()
+            V.assign(USlow_in)
 
-    #apply backwards transformation, put result in U
-    print("cheby backwards")
-    cheby.apply(U, V, -expt)
+            #apply backwards transformation, put result in U
+            cheby.apply(U, V, -expt)
 
-    #average into V
-    print("reduction")
-    ensemble.allreduce(U, V)
-    V /= Mbar
-
+            #average into V
+            ensemble.allreduce(U, V)
+            V /= Mbar
+            
     #transform forwards to next timestep
-    print("cheby forwards")
     cheby.apply(V, U, dt)
 
     un.assign(U_u)
