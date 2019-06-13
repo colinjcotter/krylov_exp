@@ -15,7 +15,7 @@ rho = 1.0 #averaging window is rho*dt
 
 L = eigs[ref_level-3]*dt*rho
 Mbar = int(3*rho*dt/min_time_period)
-assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
+#assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
 
 #ensemble communicator
@@ -53,13 +53,15 @@ c = sqrt(g*H)
 operator_in = Function(W)
 u_in, eta_in = split(operator_in)
 
+#D = eta + b
+
 u, eta = TrialFunctions(W)
 v, phi = TestFunctions(W)
 
 F = (
     - inner(f*perp(u_in),v)*dx
-    +c*eta_in*div(v)*dx
-    - c*div(u_in)*phi*dx
+    +g*eta_in*div(v)*dx
+    - H*div(u_in)*phi*dx
 )
 
 a = inner(v,u)*dx + phi*eta*dx
@@ -160,22 +162,24 @@ if rank==0:
     file_sw = File('averaged_sw.pvd', comm=ensemble.comm)
     file_sw.write(un, etan)
 
-nonlinear = False
+nonlinear = True
 
 while t < tmax + 0.5*dt:
+    print(t)
     t += dt
-
+    
     if nonlinear:
         #apply forward transformation and put result in V
         cheby.apply(U, V, expt)
         
         #apply forward slow step to V
+        #using sub-cycled SSPRK2
         for i in range(ncycles):
             USlow_in.assign(V)
             SlowSolver.solve()
             USlow_in.assign(USlow_out)
             SlowSolver.solve()
-            V.assign(USlow_in)
+            V.assign(0.5*(V + USlow_out))
 
             #apply backwards transformation, put result in U
             cheby.apply(U, V, -expt)
@@ -183,7 +187,9 @@ while t < tmax + 0.5*dt:
             #average into V
             ensemble.allreduce(U, V)
             V /= Mbar
-            
+    else:
+        V.assign(U)
+
     #transform forwards to next timestep
     cheby.apply(V, U, dt)
 
