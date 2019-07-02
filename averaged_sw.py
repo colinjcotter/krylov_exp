@@ -124,9 +124,14 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 t = 0.
 tmax = 60.*60.*24.*15
 
-tvals = rho*(np.arange(0,Mbar*1.0)/(Mbar-1)-0.5)*dt
+tvals = rho*(np.arange(0,(Mbar+1.0))/Mbar-0.5)*dt
+
+weights = 0.5*(1-np.cos(2*np.pi*tvals/dt/rho)) #cos minimum is at pi
+weights = weights/np.sum(weights)
+
 rank = ensemble.ensemble_comm.rank
 expt = tvals[rank]
+wt = weights[rank]
 
 x = SpatialCoordinate(mesh)
 
@@ -170,6 +175,13 @@ while t < tmax + 0.5*dt:
     t += dt
     
     if nonlinear:
+
+        #first order splitting
+        # U_{n+1} = \Phi(\exp(tL)U_n)
+        #         = \exp(tL)(U_n + \exp(-tL)\Delta\Phi(\exp(tL)U_n))
+        #averaged version
+        # U_{n+1} = \exp(tL)(U_n + \int \rho\exp(-sL)\Delta\Phi(\exp(sL)U_n))ds
+
         #apply forward transformation and put result in V
         cheby.apply(U, V, expt)
         
@@ -181,15 +193,16 @@ while t < tmax + 0.5*dt:
             USlow_in.assign(USlow_out)
             SlowSolver.solve()
             V.assign(0.5*(V + USlow_out))
+        #compute difference from initial value
+        V.assign(V-U)
 
         #apply backwards transformation, put result in DU
-        V.assign(V-U)
         cheby.apply(V, DU, -expt)
-        U += DU
+        DU *= wt
 
         #average into V
-        ensemble.allreduce(U, V)
-        V /= Mbar
+        ensemble.allreduce(DU, V)
+        U += V
     else:
         V.assign(U)
 
