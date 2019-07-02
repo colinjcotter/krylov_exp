@@ -151,6 +151,7 @@ un1 = Function(V1)
 etan1 = Function(V1)
 
 U = Function(W)
+DU = Function(W)
 U_u, U_eta = U.split()
 V = Function(W)
 V_u, V_eta = V.split()
@@ -181,12 +182,14 @@ while t < tmax + 0.5*dt:
             SlowSolver.solve()
             V.assign(0.5*(V + USlow_out))
 
-            #apply backwards transformation, put result in U
-            cheby.apply(U, V, -expt)
+        #apply backwards transformation, put result in DU
+        V.assign(V-U)
+        cheby.apply(V, DU, -expt)
+        U += DU
 
-            #average into V
-            ensemble.allreduce(U, V)
-            V /= Mbar
+        #average into V
+        ensemble.allreduce(U, V)
+        V /= Mbar
     else:
         V.assign(U)
 
