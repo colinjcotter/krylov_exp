@@ -209,8 +209,7 @@ while t < tmax + 0.5*dt:
     #transform forwards to next timestep
     cheby.apply(V, U, dt)
 
-    un.assign(U_u)
-    etan.assign(U_eta)
-
     if rank == 0:
+        un.assign(U_u)
+        etan.assign(U_eta)
         file_sw.write(un, etan)
