@@ -139,8 +139,8 @@ u_0 = 20.0  # maximum amplitude of the zonal wind [m/s]
 u_max = Constant(u_0)
 u_expr = as_vector([-u_max*x[1]/R0, u_max*x[0]/R0, 0.0])
 eta_expr = - ((R0 * Omega * u_max + u_max*u_max/2.0)*(x[2]*x[2]/(R0*R0)))/g
-un = Function(V1).project(u_expr)
-etan = Function(V2).project(eta_expr)
+un = Function(V1, name="Velocity").project(u_expr)
+etan = Function(V2, name="Elevation").project(eta_expr)
 
 # Topography
 rl = pi/9.0
@@ -150,7 +150,7 @@ phi_x = asin(x[2]/R0)
 phi_c = pi/6.0
 minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
 bexpr = 2000.0*(1 - sqrt(minarg)/rl)
-b.interpolate(bexpr)
+#b.interpolate(bexpr)
 
 un1 = Function(V1)
 etan1 = Function(V1)
@@ -164,9 +164,10 @@ V_u, V_eta = V.split()
 U_u.assign(un)
 U_eta.assign(etan)
 
+name = 'w2'
 if rank==0:
-    file_sw = File('averaged_sw.pvd', comm=ensemble.comm)
-    file_sw.write(un, etan)
+    file_sw = File(name+'.pvd', comm=ensemble.comm)
+    file_sw.write(un, etan, b)
 
 nonlinear = True
 
@@ -212,4 +213,4 @@ while t < tmax + 0.5*dt:
     if rank == 0:
         un.assign(U_u)
         etan.assign(U_eta)
-        file_sw.write(un, etan)
+        file_sw.write(un, etan, b)
