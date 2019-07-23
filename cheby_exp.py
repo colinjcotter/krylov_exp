@@ -46,7 +46,7 @@ class cheby_exp(object):
             nrm += abs(self.ChebCoeffs[ncheb+1])
             ncheb -= 1
             Compressed = True
-        assert(Compressed)
+        assert Compressed
 
         self.ncheb = ncheb
         self.L = L
