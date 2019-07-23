@@ -41,9 +41,12 @@ class cheby_exp(object):
         
         #cheby compression
         nrm = 0.
-        while nrm < tol:
+        Compressed = False
+        while nrm + abs(self.ChebCoeffs[ncheb+1]) < tol:
             nrm += abs(self.ChebCoeffs[ncheb+1])
             ncheb -= 1
+            Compressed = True
+        assert(Compressed)
 
         self.ncheb = ncheb
         self.L = L

@@ -7,15 +7,16 @@ print = PETSc.Sys.Print
 
 #picking cheby parameters based on ref_level
 ref_level = 3
-eigs = [0.003465, 0.007274, 0.014955]
-min_time_period = 2*pi/eigs[ref_level-3]
-hours = 6
+eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
+min_time_period = 2*pi/eigs[ref_level-3] 
+hours = 0.5
 dt = 60*60*hours
 rho = 1.0 #averaging window is rho*dt
 
 L = eigs[ref_level-3]*dt*rho
-Mbar = int(3*rho*dt/min_time_period)
-#assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
+ppp = 3 #points per (minimum) time period
+Mbar = np.ceil(p*rho*dt/min_time_period) 
+assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
 
 #ensemble communicator
@@ -124,13 +125,13 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 t = 0.
 tmax = 60.*60.*24.*15
 
-tvals = rho*(np.arange(0,(Mbar+1.0))/Mbar-0.5)*dt
+tvals = rho*(np.arange(0,(Mbar+1.0))/Mbar-0.5)*dt #tvals goes from -rho*dt/2 to rho*dt/2
 
 weights = 0.5*(1-np.cos(2*np.pi*tvals/dt/rho)) #cos minimum is at pi
 weights = weights/np.sum(weights)
 
 rank = ensemble.ensemble_comm.rank
-expt = tvals[rank]
+expt = 0.0*tvals[rank]
 wt = weights[rank]
 
 x = SpatialCoordinate(mesh)
