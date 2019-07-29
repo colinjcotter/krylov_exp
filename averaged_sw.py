@@ -5,19 +5,22 @@ import numpy as np
 from firedrake.petsc import PETSc
 print = PETSc.Sys.Print
 
-#picking cheby parameters based on ref_level
+#checking cheby parameters based on ref_level
 ref_level = 3
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 min_time_period = 2*pi/eigs[ref_level-3] 
-hours = 0.5
+hours = 3
 dt = 60*60*hours
 rho = 1.0 #averaging window is rho*dt
 
 L = eigs[ref_level-3]*dt*rho
 ppp = 3 #points per (minimum) time period
-Mbar = np.ceil(p*rho*dt/min_time_period) 
-assert Mbar == COMM_WORLD.size, "Mbar = "+str(Mbar)+" "+str(COMM_WORLD.size)
 
+# rho*dt/min_time_period = number of min_time_periods that fit in rho*dt
+# we want at least ppp times this number of sample points
+Mbar = COMM_WORLD.size
+print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
+print('Mbar', Mbar, 'samples per min time period', rho*dt/Mbar/min_time_period)
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
@@ -93,7 +96,6 @@ USlow_in = Function(W) #value at previous timestep
 USlow_out = Function(W) #value at RK stage
 
 u0, eta0 = split(USlow_in)
-u1, eta1 = split(USlow_in)
 
 #RHS for Forward Euler step
 gradperp = lambda f: perp(grad(f))
@@ -108,13 +110,13 @@ dT = Constant(dt/ncycles)
 
 L = (
     inner(v, u0)*dx + phi*eta0*dx
-    + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
-    - dT*inner(both(perp(n)*inner(v, perp(u0))),
-               both(Upwind*u0))*dS
-    + dT*div(v)*K*dx
-    + dT*inner(grad(phi), u0*(eta0-b))*dx
-    - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
-                    - uup('-')*(eta0('-') - b('-')))*dS
+    #+ dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
+    #- dT*inner(both(perp(n)*inner(v, perp(u0))),
+    #           both(Upwind*u0))*dS
+    #+ dT*div(v)*K*dx
+    #+ dT*inner(grad(phi), u0*(eta0-b))*dx
+    #- dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
+    #                - uup('-')*(eta0('-') - b('-')))*dS
 )
 #with topography, D = H + eta - b
 
@@ -124,14 +126,16 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 
 t = 0.
 tmax = 60.*60.*24.*15
+dumpt = 60.*60.*6
+tdump = 0.
 
-tvals = rho*(np.arange(0,(Mbar+1.0))/Mbar-0.5)*dt #tvals goes from -rho*dt/2 to rho*dt/2
-
-weights = 0.5*(1-np.cos(2*np.pi*tvals/dt/rho)) #cos minimum is at pi
+svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
+weights = np.exp(-1.0/svals/(1.0-svals))
 weights = weights/np.sum(weights)
+svals -= 0.5
 
 rank = ensemble.ensemble_comm.rank
-expt = 0.0*tvals[rank]
+expt = rho*dt*svals[rank]
 wt = weights[rank]
 
 x = SpatialCoordinate(mesh)
@@ -172,10 +176,12 @@ if rank==0:
 
 nonlinear = True
 
+print ('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
     print(t)
     t += dt
-    
+    tdump += t
+
     if nonlinear:
 
         #first order splitting
@@ -205,13 +211,15 @@ while t < tmax + 0.5*dt:
         #average into V
         ensemble.allreduce(DU, V)
         U += V
-    else:
-        V.assign(U)
+
+    V.assign(U)
 
     #transform forwards to next timestep
     cheby.apply(V, U, dt)
 
     if rank == 0:
-        un.assign(U_u)
-        etan.assign(U_eta)
-        file_sw.write(un, etan, b)
+        if tdump > dumpt - dt*0.5:
+            un.assign(U_u)
+            etan.assign(U_eta)
+            file_sw.write(un, etan, b)
+            tdump -= dumpt
