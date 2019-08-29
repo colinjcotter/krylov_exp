@@ -89,7 +89,7 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-6, L=L)
+                  ncheb, tol=1.0e-6, L=L, filter=True)
 
 #solvers for slow part
 USlow_in = Function(W) #value at previous timestep
