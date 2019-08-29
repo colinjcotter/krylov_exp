@@ -7,7 +7,7 @@ print = PETSc.Sys.Print
 
 class cheby_exp(object):
     def __init__(self, operator_solver, operator_in, operator_out,
-                 ncheb, tol, L):
+                 ncheb, tol, L, filter=False, filter_val=0.75*L):
         """
         Class to apply the exponential of an operator
         using chebyshev approximation
@@ -32,6 +32,10 @@ class cheby_exp(object):
         t1 = np.arange(np.pi, -dpi/2, -dpi)
         x = L*np.cos(t1)
         fvals = np.exp(1j*x)
+
+        if filter:
+            fvals /= (1 + (x/filter_val)**2)**4
+
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
         FourierCoeffs = fftpack.fft(valsUnitDisc)/ncheb
 

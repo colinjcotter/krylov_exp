@@ -20,7 +20,7 @@ ppp = 3 #points per (minimum) time period
 # we want at least ppp times this number of sample points
 Mbar = COMM_WORLD.size
 print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
-print('Mbar', Mbar, 'samples per min time period', rho*dt/Mbar/min_time_period)
+print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar))
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
