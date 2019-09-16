@@ -6,7 +6,7 @@ from firedrake.petsc import PETSc
 print = PETSc.Sys.Print
 
 #checking cheby parameters based on ref_level
-ref_level = 3
+ref_level = 5
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 min_time_period = 2*pi/eigs[ref_level-3] 
 hours = 3
@@ -110,13 +110,13 @@ dT = Constant(dt/ncycles)
 
 L = (
     inner(v, u0)*dx + phi*eta0*dx
-    #+ dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
-    #- dT*inner(both(perp(n)*inner(v, perp(u0))),
-    #           both(Upwind*u0))*dS
-    #+ dT*div(v)*K*dx
-    #+ dT*inner(grad(phi), u0*(eta0-b))*dx
-    #- dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
-    #                - uup('-')*(eta0('-') - b('-')))*dS
+    + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
+    - dT*inner(both(perp(n)*inner(v, perp(u0))),
+               both(Upwind*u0))*dS
+    + dT*div(v)*K*dx
+    + dT*inner(grad(phi), u0*(eta0-b))*dx
+    - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
+                    - uup('-')*(eta0('-') - b('-')))*dS
 )
 #with topography, D = H + eta - b
 
@@ -155,7 +155,7 @@ phi_x = asin(x[2]/R0)
 phi_c = pi/6.0
 minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
 bexpr = 2000.0*(1 - sqrt(minarg)/rl)
-#b.interpolate(bexpr)
+b.interpolate(bexpr)
 
 un1 = Function(V1)
 etan1 = Function(V1)
@@ -174,7 +174,7 @@ if rank==0:
     file_sw = File(name+'.pvd', comm=ensemble.comm)
     file_sw.write(un, etan, b)
 
-nonlinear = True
+nonlinear = False
 
 print ('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
