@@ -1,24 +1,51 @@
+#get command arguments
+import argparse
+parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
+parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
+parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
+parser.add_argument('--dumpt', type=float, default=6, help='Dump time in hours. Default 6.')
+parser.add_argument('--dt', type=float, default=3, help='Timestep in hours. Default 3.')
+parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
+parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
+parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
+parser.add_argument('--filter', action='store_true', help='Use a filter in the averaging exponential')
+parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
+parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
+parser.add_argument('--filename', type=str, default='w2')
+args = parser.parse_args()
+
+filter = args.filter
+filter_val = args.filter_val
+
+#checking cheby parameters based on ref_level
+ref_level = args.ref_level
+eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
+from math import pi
+min_time_period = 2*pi/eigs[ref_level-3] 
+hours = args.dt
+dt = 60*60*hours
+rho = args.rho #averaging window is rho*dt
+
+L = eigs[ref_level-3]*dt*rho
+ppp = args.ppp #points per (minimum) time period
+
+# rho*dt/min_time_period = number of min_time_periods that fit in rho*dt
+# we want at least ppp times this number of sample points
+from math import ceil
+Mbar = ceil(ppp*rho*dt*eigs[ref_level-3]/2/pi)
+print(args)
+
+if args.get_Mbar:
+    print("Mbar="+str(Mbar))
+    import sys; sys.exit()
+
 from cheby_exp import *
 from firedrake import *
 import numpy as np
 
 from firedrake.petsc import PETSc
 print = PETSc.Sys.Print
-
-#checking cheby parameters based on ref_level
-ref_level = 5
-eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
-min_time_period = 2*pi/eigs[ref_level-3] 
-hours = 3
-dt = 60*60*hours
-rho = 1.0 #averaging window is rho*dt
-
-L = eigs[ref_level-3]*dt*rho
-ppp = 3 #points per (minimum) time period
-
-# rho*dt/min_time_period = number of min_time_periods that fit in rho*dt
-# we want at least ppp times this number of sample points
-Mbar = COMM_WORLD.size
+assert(Mbar==COMM_WORLD.size)
 print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
 print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar))
 
@@ -89,7 +116,7 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-6, L=L, filter=True)
+                  ncheb, tol=1.0e-6, L=L, filter=filter, filter_val=filter_val)
 
 #solvers for slow part
 USlow_in = Function(W) #value at previous timestep
@@ -125,7 +152,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
                                      solver_parameters = params)
 
 t = 0.
-tmax = 60.*60.*24.*15
+tmax = 60.*60.*args.tmax
 dumpt = 60.*60.*6
 tdump = 0.
 
@@ -161,6 +188,7 @@ un1 = Function(V1)
 etan1 = Function(V1)
 
 U = Function(W)
+eU = Function(W)
 DU = Function(W)
 U_u, U_eta = U.split()
 V = Function(W)
@@ -169,12 +197,12 @@ V_u, V_eta = V.split()
 U_u.assign(un)
 U_eta.assign(etan)
 
-name = 'w2'
+name = args.filename
 if rank==0:
     file_sw = File(name+'.pvd', comm=ensemble.comm)
     file_sw.write(un, etan, b)
 
-nonlinear = False
+nonlinear = args.nonlinear
 
 print ('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
@@ -190,11 +218,13 @@ while t < tmax + 0.5*dt:
         #averaged version
         # U_{n+1} = \exp(tL)(U_n + \int \rho\exp(-sL)\Delta\Phi(\exp(sL)U_n))ds
 
-        #apply forward transformation and put result in V
-        cheby.apply(U, V, expt)
+        #apply forward transformation and put result in V, storing copy in eU
+        cheby.apply(U, eU, expt)
+        V.assign(eU)
         
         #apply forward slow step to V
         #using sub-cycled SSPRK2
+
         for i in range(ncycles):
             USlow_in.assign(V)
             SlowSolver.solve()
@@ -202,7 +232,7 @@ while t < tmax + 0.5*dt:
             SlowSolver.solve()
             V.assign(0.5*(V + USlow_out))
         #compute difference from initial value
-        V.assign(V-U)
+        V.assign(V-eU)
 
         #apply backwards transformation, put result in DU
         cheby.apply(V, DU, -expt)
