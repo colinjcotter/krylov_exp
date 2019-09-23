@@ -1,3 +1,5 @@
+#Use implicit midpoint with fixed point on advection velocity 
+
 #get command arguments
 import argparse
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
@@ -13,11 +15,13 @@ parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for 
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--ncycles', type=int, default=2, help='Number of subcycles in nonlinear step')
 parser.add_argument('--filename', type=str, default='w2')
+parser.add_argument('--theta', type=float, default=0.5, help='Implicit timestepping parameter for nonlinear propagator. 0.5 = implicit midpoint rule, 1.0 = full implicit')
 args = parser.parse_known_args()
 args = args[0]
 
 filter = args.filter
 filter_val = args.filter_val
+theta = args.theta
 
 #checking cheby parameters based on ref_level
 ref_level = args.ref_level
@@ -126,29 +130,34 @@ cheby2 = cheby_exp(OperatorSolver, operator_in, operator_out,
 #solvers for slow part
 USlow_in = Function(W) #value at previous timestep
 USlow_out = Function(W) #value at RK stage
+Unl = Function(W) #outer loop for slow solver
 
 u0, eta0 = split(USlow_in)
+u1, eta1 = split(USlow_in)
+unl, etanl = split(Unl)
+uh = theta*u1 + (1-theta)*u0
+etah = theta*eta1 + (1-theta)*eta0
 
 #RHS for Forward Euler step
 gradperp = lambda f: perp(grad(f))
 n = FacetNormal(mesh)
-Upwind = 0.5 * (sign(dot(u0, n)) + 1)
+Upwind = 0.5 * (sign(dot(unl, n)) + 1)
 both = lambda u: 2*avg(u)
-K = 0.5*inner(u0, u0)
-uup = 0.5 * (dot(u0, n) + abs(dot(u0, n)))
+K = 0.5*inner(unl, u0)
+uup = 0.5 * (dot(unl, n) + abs(dot(unl, n)))
 
 ncycles = args.ncycles
 dT = Constant(dt/ncycles)
 
-L = (
-    inner(v, u0)*dx + phi*eta0*dx
-    + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
-    - dT*inner(both(perp(n)*inner(v, perp(u0))),
-               both(Upwind*u0))*dS
+eqn = (
+    inner(v, u1-u0)*dx + phi*(eta1-eta0)*dx
+    + dT*inner(perp(grad(inner(v, perp(unl)))), uh)*dx
+    - dT*inner(both(perp(n)*inner(v, perp(unl))),
+               both(Upwind*uh))*dS
     + dT*div(v)*K*dx
-    + dT*inner(grad(phi), u0*(eta0-b))*dx
-    - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
-                    - uup('-')*(eta0('-') - b('-')))*dS
+    + dT*inner(grad(phi), unl*(etah-b))*dx
+    - dT*jump(phi)*(uup('+')*(etah('+')-b('+'))
+                    - uup('-')*(etah('-') - b('-')))*dS
 )
 #with topography, D = H + eta - b
 
@@ -229,14 +238,15 @@ while t < tmax + 0.5*dt:
         V.assign(eU)
         
         #apply forward slow step to V
-        #using sub-cycled SSPRK2
+        #using semi-implicit stepping
 
         for i in range(ncycles):
             USlow_in.assign(V)
+            Unl.assign(V)
             SlowSolver.solve()
-            USlow_in.assign(USlow_out)
+            Unl.assign(0.5*(V + USlow_out))
             SlowSolver.solve()
-            V.assign(0.5*(V + USlow_out))
+            V.assign(USlow_out)
         #compute difference from initial value
         V -= eU
 
