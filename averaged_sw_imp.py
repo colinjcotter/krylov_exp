@@ -170,7 +170,8 @@ impparams = {
     'fieldsplit_1_sub_pc_type':'ilu'
 }
 
-SlowProb = LinearVariationalProblem(lhs(eqn), rhs(eqn), USlow_out)
+SlowProb = LinearVariationalProblem(lhs(eqn), rhs(eqn), USlow_out,
+                                    constant_jacobian=False)
 SlowSolver = LinearVariationalSolver(SlowProb,
                                      solver_parameters = impparams)
 

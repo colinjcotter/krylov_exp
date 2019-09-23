@@ -140,16 +140,28 @@ uup = 0.5 * (dot(u0, n) + abs(dot(u0, n)))
 ncycles = args.ncycles
 dT = Constant(dt/ncycles)
 
-L = (
-    inner(v, u0)*dx + phi*eta0*dx
-    + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
-    - dT*inner(both(perp(n)*inner(v, perp(u0))),
-               both(Upwind*u0))*dS
-    + dT*div(v)*K*dx
-    + dT*inner(grad(phi), u0*(eta0-b))*dx
-    - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
-                    - uup('-')*(eta0('-') - b('-')))*dS
-)
+vector_invariant = False
+if vector_invariant:
+    L = (
+        inner(v, u0)*dx + phi*eta0*dx
+        + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
+        - dT*inner(both(perp(n)*inner(v, perp(u0))),
+                   both(Upwind*u0))*dS
+        + dT*div(v)*K*dx
+        + dT*inner(grad(phi), u0*(eta0-b))*dx
+        - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
+                        - uup('-')*(eta0('-') - b('-')))*dS
+        )
+else:
+    L = (
+        inner(v, u0)*dx + phi*eta0*dx
+        + dT*inner(div(outer(u0, v)), u)*dx
+        - dT*inner(both(inner(n, u0)*v), both(Upwind*u0))*dS
+        + dT*inner(grad(phi), u0*(eta0-b))*dx
+        - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
+                        - uup('-')*(eta0('-') - b('-')))*dS
+        )
+
 #with topography, D = H + eta - b
 
 SlowProb = LinearVariationalProblem(a, L, USlow_out)
