@@ -77,9 +77,6 @@ V1 = FunctionSpace(mesh, "BDM", 2)
 V2 = FunctionSpace(mesh, "DG", 1)
 W = MixedFunctionSpace((V1, V2))
 
-u, eta = TrialFunctions(W)
-v, phi = TestFunctions(W)
-
 Omega = Constant(7.292e-5)  # rotation rate
 f = 2*Omega*cz/Constant(R0)  # Coriolis parameter
 g = Constant(9.8)  # Gravitational constant
@@ -133,7 +130,7 @@ USlow_out = Function(W) #value at RK stage
 Unl = Function(W) #outer loop for slow solver
 
 u0, eta0 = split(USlow_in)
-u1, eta1 = split(USlow_in)
+u1, eta1 = TrialFunctions(W)
 unl, etanl = split(Unl)
 uh = theta*u1 + (1-theta)*u0
 etah = theta*eta1 + (1-theta)*eta0
@@ -161,9 +158,21 @@ eqn = (
 )
 #with topography, D = H + eta - b
 
-SlowProb = NonlinearVariationalProblem(eqn, USlow_out)
-SlowSolver = NonlinearVariationalSolver(SlowProb,
-                                        solver_parameters = params)
+
+impparams = {
+    'ksp_type': 'preonly',
+    'pc_type': 'fieldsplit',
+    'fieldsplit_0_ksp_type':'cg',
+    'fieldsplit_0_pc_type':'bjacobi',
+    'fieldsplit_0_sub_pc_type':'ilu',
+    'fieldsplit_1_ksp_type':'cg',
+    'fieldsplit_1_pc_type':'bjacobi',
+    'fieldsplit_1_sub_pc_type':'ilu'
+}
+
+SlowProb = LinearVariationalProblem(lhs(eqn), rhs(eqn), USlow_out)
+SlowSolver = LinearVariationalSolver(SlowProb,
+                                     solver_parameters = impparams)
 
 t = 0.
 tmax = 60.*60.*args.tmax
