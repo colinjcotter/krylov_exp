@@ -161,9 +161,9 @@ eqn = (
 )
 #with topography, D = H + eta - b
 
-SlowProb = LinearVariationalProblem(a, L, USlow_out)
-SlowSolver = LinearVariationalSolver(SlowProb,
-                                     solver_parameters = params)
+SlowProb = NonlinearVariationalProblem(eqn, USlow_out)
+SlowSolver = NonlinearVariationalSolver(SlowProb,
+                                        solver_parameters = params)
 
 t = 0.
 tmax = 60.*60.*args.tmax
