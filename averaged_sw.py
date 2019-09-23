@@ -155,7 +155,7 @@ if vector_invariant:
 else:
     L = (
         inner(v, u0)*dx + phi*eta0*dx
-        + dT*inner(div(outer(u0, v)), u)*dx
+        + dT*inner(div(outer(u0, v)), u0)*dx
         - dT*inner(both(inner(n, u0)*v), both(Upwind*u0))*dS
         + dT*inner(grad(phi), u0*(eta0-b))*dx
         - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
