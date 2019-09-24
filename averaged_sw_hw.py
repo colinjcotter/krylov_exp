@@ -209,7 +209,7 @@ V = Function(W)
 
 U_u, U_eta = U.split()
 U_u.assign(un)
-OAU_eta.assign(etan)
+U_eta.assign(etan)
 
 name = args.filename
 if rank==0:
