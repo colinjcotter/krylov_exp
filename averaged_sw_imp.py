@@ -233,7 +233,7 @@ print ('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
     print(t)
     t += dt
-    tdump += t
+    tdump += dt
 
     if nonlinear:
 
