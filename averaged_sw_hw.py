@@ -230,14 +230,14 @@ while t < tmax + 0.5*dt:
         SlowSolver.solve()
         cheby.apply(USlow_out, DU, expt)        
         DU *= wt
-        ensemble.allreduce(DU, V, expt)
+        ensemble.allreduce(DU, V)
         V.assign(U + 0.5*V)
 
         cheby.apply(V, USlow_in, expt)
         SlowSolver.solve()
         cheby.apply(USlow_out, DU, expt)        
         DU *= wt
-        ensemble.allreduce(DU, V, expt)
+        ensemble.allreduce(DU, V)
         V.assign(U + V)
 
     #transform forwards to next timestep
