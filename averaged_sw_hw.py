@@ -11,8 +11,7 @@ parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Comput
 parser.add_argument('--filter', action='store_true', help='Use a filter in the averaging exponential')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
-parser.add_argument('--ncycles', type=int, default=2, help='Number of subcycles in nonlinear step')
-parser.add_argument('--filename', type=str, default='w2')
+parser.add_argument('--filename', type=str, default='w2hw')
 args = parser.parse_known_args()
 args = args[0]
 
@@ -137,14 +136,12 @@ both = lambda u: 2*avg(u)
 K = 0.5*inner(u0, u0)
 uup = 0.5 * (dot(u0, n) + abs(dot(u0, n)))
 
-ncycles = args.ncycles
-dT = Constant(dt/ncycles)
+dT = Constant(dt)
 
 vector_invariant = True
 if vector_invariant:
     L = (
-        inner(v, u0)*dx + phi*eta0*dx
-        + dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
+        dT*inner(perp(grad(inner(v, perp(u0)))), u0)*dx
         - dT*inner(both(perp(n)*inner(v, perp(u0))),
                    both(Upwind*u0))*dS
         + dT*div(v)*K*dx
@@ -154,8 +151,7 @@ if vector_invariant:
         )
 else:
     L = (
-        inner(v, u0)*dx + phi*eta0*dx
-        + dT*inner(div(outer(u0, v)), u0)*dx
+        dT*inner(div(outer(u0, v)), u0)*dx
         - dT*inner(both(inner(n, u0)*v), both(Upwind*u0))*dS
         + dT*inner(grad(phi), u0*(eta0-b))*dx
         - dT*jump(phi)*(uup('+')*(eta0('+')-b('+'))
@@ -170,7 +166,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 
 t = 0.
 tmax = 60.*60.*args.tmax
-dumpt = args.dumpt
+dumpt = 60.*60.*6
 tdump = 0.
 
 svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
@@ -213,7 +209,7 @@ V = Function(W)
 
 U_u, U_eta = U.split()
 U_u.assign(un)
-U_eta.assign(etan)
+OAU_eta.assign(etan)
 
 name = args.filename
 if rank==0:
@@ -230,40 +226,22 @@ while t < tmax + 0.5*dt:
 
     if nonlinear:
 
-        #first order splitting
-        # U_{n+1} = \Phi(\exp(tL)U_n)
-        #         = \exp(tL)(U_n + \exp(-tL)\Delta\Phi(\exp(tL)U_n))
-        #averaged version
-        # U_{n+1} = \exp(tL)(U_n + \int \rho\exp(-sL)\Delta\Phi(\exp(sL)U_n))ds
-
-        #apply forward transformation and put result in V, storing copy in eU
-        cheby.apply(U, eU, expt)
-        V.assign(eU)
-        
-        #apply forward slow step to V
-        #using sub-cycled SSPRK2
-
-        for i in range(ncycles):
-            USlow_in.assign(V)
-            SlowSolver.solve()
-            USlow_in.assign(USlow_out)
-            SlowSolver.solve()
-            V.assign(0.5*(V + USlow_out))
-        #compute difference from initial value
-        V -= eU
-
-        #apply backwards transformation, put result in DU
-        #without filtering
-        cheby.apply(V, DU, -expt)
+        cheby.apply(U, USlow_in, expt)
+        SlowSolver.solve()
+        cheby.apply(USlow_out, DU, expt)        
         DU *= wt
+        ensemble.allreduce(DU, V, expt)
+        V.assign(U + 0.5*V)
 
-        #average into V
-        ensemble.allreduce(DU, V)
-        U += V
-
-    V.assign(U)
+        cheby.apply(V, USlow_in, expt)
+        SlowSolver.solve()
+        cheby.apply(USlow_out, DU, expt)        
+        DU *= wt
+        ensemble.allreduce(DU, V, expt)
+        V.assign(U + V)
 
     #transform forwards to next timestep
+    V.assign(U)
     cheby2.apply(V, U, dt)
 
     if rank == 0:
