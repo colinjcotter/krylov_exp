@@ -166,7 +166,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 
 t = 0.
 tmax = 60.*60.*args.tmax
-dumpt = 60.*60.*6
+dumpt = args.dumpt*60.*60.
 tdump = 0.
 
 svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
@@ -228,20 +228,19 @@ while t < tmax + 0.5*dt:
 
         cheby.apply(U, USlow_in, expt)
         SlowSolver.solve()
-        cheby.apply(USlow_out, DU, expt)        
+        cheby.apply(USlow_out, DU, -expt)
         DU *= wt
         ensemble.allreduce(DU, V)
         V.assign(U + 0.5*V)
 
         cheby.apply(V, USlow_in, expt)
         SlowSolver.solve()
-        cheby.apply(USlow_out, DU, expt)        
+        cheby.apply(USlow_out, DU, -expt)
         DU *= wt
         ensemble.allreduce(DU, V)
         V.assign(U + V)
 
     #transform forwards to next timestep
-    V.assign(U)
     cheby2.apply(V, U, dt)
 
     if rank == 0:

@@ -170,7 +170,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 
 t = 0.
 tmax = 60.*60.*args.tmax
-dumpt = args.dumpt
+dumpt = args.dumpt*60.*60.
 tdump = 0.
 
 svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
