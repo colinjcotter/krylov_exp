@@ -4,11 +4,12 @@ parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
 parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
 parser.add_argument('--dumpt', type=float, default=6, help='Dump time in hours. Default 6.')
-parser.add_argument('--dt', type=float, default=3, help='Timestep in hours. Default 3.')
+parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Default 1.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
-parser.add_argument('--filter', action='store_true', help='Use a filter in the averaging exponential')
+parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
+parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--filename', type=str, default='w2hw')
@@ -16,13 +17,14 @@ args = parser.parse_known_args()
 args = args[0]
 
 filter = args.filter
+filter2 = args.filter2
 filter_val = args.filter_val
 
 #checking cheby parameters based on ref_level
 ref_level = args.ref_level
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 from math import pi
-min_time_period = 2*pi/eigs[ref_level-3] 
+min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
 dt = 60*60*hours
 rho = args.rho #averaging window is rho*dt
@@ -67,7 +69,7 @@ cx, cy, cz = SpatialCoordinate(mesh)
 
 outward_normals = CellNormal(mesh)
 perp = lambda u: cross(outward_normals, u)
-    
+
 V1 = FunctionSpace(mesh, "BDM", 2)
 V2 = FunctionSpace(mesh, "DG", 1)
 W = MixedFunctionSpace((V1, V2))
@@ -117,10 +119,10 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-6, L=L, filter=filter, filter_val=filter_val)
+                  ncheb, tol=1.0e-8, L=L, filter=filter, filter_val=filter_val)
 
 cheby2 = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-6, L=L, filter=False)
+                   ncheb, tol=1.0e-8, L=L, filter=filter2, filter_val=filter_val)
 
 #solvers for slow part
 USlow_in = Function(W) #value at previous timestep
@@ -203,7 +205,6 @@ un1 = Function(V1)
 etan1 = Function(V1)
 
 U = Function(W)
-eU = Function(W)
 DU = Function(W)
 V = Function(W)
 
@@ -232,12 +233,12 @@ while t < tmax + 0.5*dt:
     ensemble.allreduce(DU, V)
     #Step forward V by half a step
     V.assign(U + 0.5*V)
-    
+
     #transform forwards to U^{n+1/2}
-    cheby2.apply(V, USlow_in, dt/2)
+    cheby2.apply(V, DU, dt/2)
 
     #Average the nonlinearity
-    cheby.apply(V, USlow_in, expt)
+    cheby.apply(DU, USlow_in, expt)
     SlowSolver.solve()
     cheby.apply(USlow_out, DU, -expt)
     DU *= wt
