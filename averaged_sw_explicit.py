@@ -9,10 +9,11 @@ parser.add_argument('--rho', type=float, default=1, help='Averaging window width
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
 parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
+parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
-parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'heuns', 'ssprk3'], help='Choose a time steeping method. Default SSPRK3.')
+parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
+parser.add_argument('--asselin', type=float, default=0.15, help='Asselin Filter coefficient. Default 0.15.')
 parser.add_argument('--filename', type=str, default='explicit')
 args = parser.parse_known_args()
 args = args[0]
@@ -21,6 +22,7 @@ filter = args.filter
 filter2 = args.filter2
 filter_val = args.filter_val
 timestepping = args.timestepping
+asselin = args.asselin
 
 #checking cheby parameters based on ref_level
 ref_level = args.ref_level
@@ -229,8 +231,11 @@ while t < tmax + 0.5*dt:
     t += dt
     tdump += dt
 
-    if timestepping == 'ssprk3':
-        #Average the nonlinearity
+    if t == dt and timestepping == 'leapfrog':
+        U_old = Function(W)
+        U_new = Function(W)
+
+        #First time step using SSPRK3
         cheby.apply(U, USlow_in, expt)
         SlowSolver.solve()
         cheby.apply(USlow_out, DU, -expt)
@@ -262,56 +267,112 @@ while t < tmax + 0.5*dt:
         DU.assign(U2 + U1)
         cheby2.apply(DU, U2, dt/2)
         cheby2.apply(U, U1, dt)
+
+        #transform forwards to next timestep
+        U_old.assign(U)
         U.assign(1/3*U1 + 2/3*U2)
-    elif timestepping == 'rk2':
-        #Average the nonlinearity
-        cheby.apply(U, USlow_in, expt)
-        SlowSolver.solve()
-        cheby.apply(USlow_out, DU, -expt)
-        DU *= wt
-        ensemble.allreduce(DU, V)
-        #Step forward V
-        V.assign(U + 0.5*V)
+    else:
+        if timestepping == 'leapfrog':
+            #Average the nonlinearity
+            cheby.apply(U, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, V)
+            #Step forward V
+            cheby2.apply(U_old, DU, dt)
+            V.assign(DU + 2*V)
+            cheby2.apply(V, U_new, dt)
+            #Average the nonlinearity
+            cheby2.apply(U_old, U1, dt)
+            cheby2.apply(U_new, U2, -dt)
+            V.assign((U1+U2)*0.5 - U)
+            #Advance U
+            U_old.assign(U + asselin*V)
+            U.assign(U_new)
+        elif timestepping == 'ssprk3':
+            #Average the nonlinearity
+            cheby.apply(U, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, U1)
+            #Step forward U1
+            DU.assign(U + U1)
+            cheby2.apply(DU, U1, dt)
 
-        #transform forwards to U^{n+1/2}
-        cheby2.apply(V, DU, dt/2)
+            #Average the nonlinearity
+            cheby.apply(U1, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, U2)
+            #Advance U
+            DU.assign(U1 + U2)
+            cheby2.apply(DU, U2, -dt/2)
+            cheby2.apply(U, U1, dt/2)
+            U2.assign(0.75*U1 + 0.25*U2)
 
-        #Average the nonlinearity
-        cheby.apply(DU, USlow_in, expt)
-        SlowSolver.solve()
-        cheby.apply(USlow_out, DU, -expt)
-        DU *= wt
-        ensemble.allreduce(DU, V)
-        #Advance U
-        cheby2.apply(U, DU, dt/2)
-        V.assign(DU + V)
+            #Average the nonlinearity
+            cheby.apply(U2, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, U1)
+            #Advance U
+            DU.assign(U2 + U1)
+            cheby2.apply(DU, U2, dt/2)
+            cheby2.apply(U, U1, dt)
+            U.assign(1/3*U1 + 2/3*U2)
+        elif timestepping == 'rk2':
+            #Average the nonlinearity
+            cheby.apply(U, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, V)
+            #Step forward V
+            V.assign(U + 0.5*V)
 
-        #transform forwards to next timestep
-        cheby2.apply(V, U, dt/2)
-    elif timestepping == 'heuns':
-        #Average the nonlinearity
-        cheby.apply(U, USlow_in, expt)
-        SlowSolver.solve()
-        cheby.apply(USlow_out, DU, -expt)
-        DU *= wt
-        ensemble.allreduce(DU, U1)
-        #Step forward U1
-        U1.assign(U + U1)
+            #transform forwards to U^{n+1/2}
+            cheby2.apply(V, DU, dt/2)
 
-        #Average the nonlinearity
-        cheby2.apply(U1, DU, dt)
-        cheby.apply(DU, USlow_in, expt)
-        SlowSolver.solve()
-        cheby.apply(USlow_out, DU, -expt)
-        DU *= wt
-        ensemble.allreduce(DU, U2)
-        #Advance U
-        cheby2.apply(U, DU, dt)
-        U2.assign(DU + U2)
+            #Average the nonlinearity
+            cheby.apply(DU, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, V)
+            #Advance U
+            cheby2.apply(U, DU, dt/2)
+            V.assign(DU + V)
 
-        #transform forwards to next timestep
-        cheby2.apply(U1, U, dt)
-        U.assign(0.5*U + 0.5*U2)
+            #transform forwards to next timestep
+            cheby2.apply(V, U, dt/2)
+        elif timestepping == 'heuns':
+            #Average the nonlinearity
+            cheby.apply(U, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, U1)
+            #Step forward U1
+            U1.assign(U + U1)
+
+            #Average the nonlinearity
+            cheby2.apply(U1, DU, dt)
+            cheby.apply(DU, USlow_in, expt)
+            SlowSolver.solve()
+            cheby.apply(USlow_out, DU, -expt)
+            DU *= wt
+            ensemble.allreduce(DU, U2)
+            #Advance U
+            cheby2.apply(U, DU, dt)
+            U2.assign(DU + U2)
+
+            #transform forwards to next timestep
+            cheby2.apply(U1, U, dt)
+            U.assign(0.5*U + 0.5*U2)
 
     if rank == 0:
         if tdump > dumpt - dt*0.5:
