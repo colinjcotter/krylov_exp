@@ -95,7 +95,7 @@ def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
 
     cheby2.apply(U, V, dt)
 
-    U.assign(V + DU/6 + U1/3 + U2/3 + U3/6)
+    U.assign(V + 1/6*DU + 1/3*U1 + 1/3*U2 + 1/6*U3)
 
 
 def heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
