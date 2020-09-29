@@ -13,7 +13,7 @@ parser.add_argument('--filter', type=bool, default=True, help='Use a filter in t
 parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
-parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
+parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
 parser.add_argument('--filename', type=str, default='explicit')
 args = parser.parse_known_args()
@@ -213,6 +213,7 @@ U = Function(W)
 DU = Function(W)
 U1 = Function(W)
 U2 = Function(W)
+U3 = Function(W)
 V = Function(W)
 
 from timestepping_methods import *
@@ -249,6 +250,9 @@ while t < tmax + 0.5*dt:
                    expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'rk2':
             rk2(U, USlow_in, USlow_out, DU, V, W,
+                expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
+        elif timestepping == 'rk4':
+            rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
                 expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'heuns':
             heuns(U, USlow_in, USlow_out, DU, U1, U2, W,

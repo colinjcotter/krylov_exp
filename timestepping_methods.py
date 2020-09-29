@@ -31,6 +31,73 @@ def rk2(U, USlow_in, USlow_out, DU, V, W,
     cheby2.apply(V, U, dt/2)
 
 
+def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
+          expt, ensemble, cheby, cheby2, SlowSolver, wt, dt):
+    #Average the nonlinearity
+    cheby.apply(U, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, U1)
+    #Step forward U1
+    U1.assign(U + 0.5*U1)
+
+    #Average the nonlinearity
+    cheby2.apply(U1, DU, dt/2)
+    cheby.apply(DU, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, U2)
+    #Step forward U2
+    cheby2.apply(U, DU, dt/2)
+    U2.assign(DU + 0.5*U2)
+
+    #Average the nonlinearity
+    cheby.apply(U2, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, U3)
+    #Step forward U1
+    cheby2.apply(U, DU, dt/2)
+    U3.assign(DU + U3)
+
+    #Average the nonlinearity
+    cheby2.apply(U1, DU, dt/2)
+    cheby.apply(DU, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, V)
+    cheby2.apply(V, U1, dt/2)
+
+    cheby.apply(U2, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, V)
+    cheby2.apply(V, U2, dt/2)
+
+    cheby2.apply(U3, DU, dt/2)
+    cheby.apply(DU, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, U3)
+
+    cheby.apply(U, USlow_in, expt)
+    SlowSolver.solve()
+    cheby.apply(USlow_out, DU, -expt)
+    DU *= wt
+    ensemble.allreduce(DU, V)
+    cheby2.apply(V, DU, dt)
+
+    cheby2.apply(U, V, dt)
+
+    U.assign(V + DU/6 + U1/3 + U2/3 + U3/6)
+
+
 def heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
           expt, ensemble, cheby, cheby2, SlowSolver, wt, dt):
     #Average the nonlinearity
