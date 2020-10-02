@@ -214,6 +214,9 @@ DU = Function(W)
 U1 = Function(W)
 U2 = Function(W)
 U3 = Function(W)
+V1 = Function(W)
+V2 = Function(W)
+V3 = Function(W)
 V = Function(W)
 
 from timestepping_methods import *
@@ -252,7 +255,7 @@ while t < tmax + 0.5*dt:
             rk2(U, USlow_in, USlow_out, DU, V, W,
                 expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'rk4':
-            rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
+            rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V1, V2, V3, V, W,
                 expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'heuns':
             heuns(U, USlow_in, USlow_out, DU, U1, U2, W,

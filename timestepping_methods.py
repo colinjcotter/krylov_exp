@@ -31,16 +31,16 @@ def rk2(U, USlow_in, USlow_out, DU, V, W,
     cheby2.apply(V, U, dt/2)
 
 
-def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
+def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V1, V2, V3, V, W,
           expt, ensemble, cheby, cheby2, SlowSolver, wt, dt):
     #Average the nonlinearity
     cheby.apply(U, USlow_in, expt)
     SlowSolver.solve()
     cheby.apply(USlow_out, DU, -expt)
     DU *= wt
-    ensemble.allreduce(DU, U1)
+    ensemble.allreduce(DU, V1)
     #Step forward U1
-    U1.assign(U + 0.5*U1)
+    U1.assign(U + 0.5*V1)
 
     #Average the nonlinearity
     cheby2.apply(U1, DU, dt/2)
@@ -48,36 +48,23 @@ def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
     SlowSolver.solve()
     cheby.apply(USlow_out, DU, -expt)
     DU *= wt
-    ensemble.allreduce(DU, U2)
+    ensemble.allreduce(DU, V2)
     #Step forward U2
-    cheby2.apply(U, DU, dt/2)
-    U2.assign(DU + 0.5*U2)
+    cheby2.apply(U, V, dt/2)
+    U2.assign(V + 0.5*V2)
 
     #Average the nonlinearity
     cheby.apply(U2, USlow_in, expt)
     SlowSolver.solve()
     cheby.apply(USlow_out, DU, -expt)
     DU *= wt
-    ensemble.allreduce(DU, U3)
+    ensemble.allreduce(DU, V3)
     #Step forward U1
-    cheby2.apply(U, DU, dt/2)
-    U3.assign(DU + U3)
+    U3.assign(V + V3)
 
     #Average the nonlinearity
-    cheby2.apply(U1, DU, dt/2)
-    cheby.apply(DU, USlow_in, expt)
-    SlowSolver.solve()
-    cheby.apply(USlow_out, DU, -expt)
-    DU *= wt
-    ensemble.allreduce(DU, V)
-    cheby2.apply(V, U1, dt/2)
-
-    cheby.apply(U2, USlow_in, expt)
-    SlowSolver.solve()
-    cheby.apply(USlow_out, DU, -expt)
-    DU *= wt
-    ensemble.allreduce(DU, V)
-    cheby2.apply(V, U2, dt/2)
+    cheby2.apply(V2, U1, dt/2)
+    cheby2.apply(V3, U2, dt/2)
 
     cheby2.apply(U3, DU, dt/2)
     cheby.apply(DU, USlow_in, expt)
@@ -86,13 +73,7 @@ def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V, W,
     DU *= wt
     ensemble.allreduce(DU, U3)
 
-    cheby.apply(U, USlow_in, expt)
-    SlowSolver.solve()
-    cheby.apply(USlow_out, DU, -expt)
-    DU *= wt
-    ensemble.allreduce(DU, V)
-    cheby2.apply(V, DU, dt)
-
+    cheby2.apply(V1, DU, dt)
     cheby2.apply(U, V, dt)
 
     U.assign(V + 1/6*DU + 1/3*U1 + 1/3*U2 + 1/6*U3)
