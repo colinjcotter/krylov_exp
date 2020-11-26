@@ -1,4 +1,3 @@
-
 #get command arguments
 import argparse
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
@@ -10,7 +9,7 @@ parser.add_argument('--rho', type=float, default=1, help='Averaging window width
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
 parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
+parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
@@ -214,9 +213,9 @@ DU = Function(W)
 U1 = Function(W)
 U2 = Function(W)
 U3 = Function(W)
-V1 = Function(W)
-V2 = Function(W)
-V3 = Function(W)
+W1 = Function(W)
+W2 = Function(W)
+W3 = Function(W)
 V = Function(W)
 
 from timestepping_methods import *
@@ -255,7 +254,7 @@ while t < tmax + 0.5*dt:
             rk2(U, USlow_in, USlow_out, DU, V, W,
                 expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'rk4':
-            rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V1, V2, V3, V, W,
+            rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, W1, W2, W3, V, W,
                 expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
         elif timestepping == 'heuns':
             heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
@@ -266,4 +265,31 @@ while t < tmax + 0.5*dt:
             un.assign(U_u)
             etan.assign(U_eta)
             file_sw.write(un, etan, b)
+            print("dumped at t =", t)
             tdump -= dumpt
+
+valf = assemble(etan*dx)
+
+print("create checkpointing file at rank =", rank)
+chk = DumbCheckpoint("dump_explicit", mode=FILE_CREATE)
+chk.store(un)
+chk.store(etan)
+chk.store(b)
+chk.close()
+
+und = Function(V1)
+etand = Function(V2)
+bd = Function(V2)
+
+chk = DumbCheckpoint("dump_explicit", mode=FILE_READ)
+chk.load(und, name="Velocity")
+chk.load(etand, name="Elevation")
+chk.load(bd, name="Topography")
+
+valg = assemble(etand*dx)
+
+print("valf = ", valf)
+print("valg = ", valg)
+assert(valf == valg)
+
+chk.close()
