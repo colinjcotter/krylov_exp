@@ -1,5 +1,13 @@
-#get command arguments
+from cheby_exp import *
+from firedrake import *
+from firedrake.petsc import PETSc
+from math import pi
+from math import ceil
+from timestepping_methods import *
+import numpy as np
 import argparse
+
+#get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
 parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
@@ -17,82 +25,98 @@ parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter c
 parser.add_argument('--filename', type=str, default='explicit')
 args = parser.parse_known_args()
 args = args[0]
-
 filter = args.filter
 filter2 = args.filter2
 filter_val = args.filter_val
 timestepping = args.timestepping
 asselin = args.asselin
+ref_level = args.ref_level
+
+#ensemble communicator
+ensemble = Ensemble(COMM_WORLD, 1)
+
+#parameters
+R0 = 6371220.
+H = Constant(5960.)
+Omega = Constant(7.292e-5)  # rotation rate
+g = Constant(9.8)  # Gravitational constant
+mesh = IcosahedralSphereMesh(radius=R0,
+                             refinement_level=ref_level, degree=3,
+                             comm = ensemble.comm)
+x = SpatialCoordinate(mesh)
+global_normal = as_vector([x[0], x[1], x[2]])
+mesh.init_cell_orientations(global_normal)
+outward_normals = CellNormal(mesh)
+perp = lambda u: cross(outward_normals, u)
+V1 = FunctionSpace(mesh, "BDM", 2)
+V2 = FunctionSpace(mesh, "DG", 1)
+W = MixedFunctionSpace((V1, V2))
+f = 2*Omega*x[2]/Constant(R0)  # Coriolis parameter
+u_0 = 20.0  # maximum amplitude of the zonal wind [m/s]
+u_max = Constant(u_0)
+u_expr = as_vector([-u_max*x[1]/R0, u_max*x[0]/R0, 0.0])
+eta_expr = - ((R0 * Omega * u_max + u_max*u_max/2.0)*(x[2]*x[2]/(R0*R0)))/g
+un = Function(V1, name="Velocity").project(u_expr)
+etan = Function(V2, name="Elevation").project(eta_expr)
+
+#topography (D = H + eta - b)
+rl = pi/9.0
+lambda_x = atan_2(x[1]/R0, x[0]/R0)
+lambda_c = -pi/2.0
+phi_x = asin(x[2]/R0)
+phi_c = pi/6.0
+minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
+bexpr = 2000.0*(1 - sqrt(minarg)/rl)
+b = Function(V2, name="Topography")
+b.interpolate(bexpr)
 
 #checking cheby parameters based on ref_level
-ref_level = args.ref_level
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
-from math import pi
 min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
 dt = 60*60*hours
 rho = args.rho #averaging window is rho*dt
-
 L = eigs[ref_level-3]*dt*rho
 ppp = args.ppp #points per (minimum) time period
-
-# rho*dt/min_time_period = number of min_time_periods that fit in rho*dt
-# we want at least ppp times this number of sample points
-from math import ceil
+               #rho*dt/min_time_period = number of min_time_periods that fit in rho*dt
+               #we want at least ppp times this number of sample points
 Mbar = ceil(ppp*rho*dt*eigs[ref_level-3]/2/pi)
 print(args)
-
 if args.get_Mbar:
     print("Mbar="+str(Mbar))
     import sys; sys.exit()
 
-from cheby_exp import *
-from firedrake import *
-import numpy as np
+#set svals
+svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
+weights = np.exp(-1.0/svals/(1.0-svals))
+weights = weights/np.sum(weights)
+print(weights)
+svals -= 0.5
 
-from firedrake.petsc import PETSc
+#set weights
+rank = ensemble.ensemble_comm.rank
+expt = rho*dt*svals[rank]
+wt = weights[rank]
+print(wt,"weight",expt)
+
+#parameters for timestepping
+t = 0.
+tmax = 60.*60.*args.tmax
+dumpt = args.dumpt*60.*60.
+tdump = 0.
+
+#dump settings
 print = PETSc.Sys.Print
 assert Mbar==COMM_WORLD.size, str(Mbar)+' '+str(COMM_WORLD.size)
 print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
 print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar))
 
-#ensemble communicator
-ensemble = Ensemble(COMM_WORLD, 1)
 
-#some domain, parameters and FS setup
-R0 = 6371220.
-H = Constant(5960.)
-
-mesh = IcosahedralSphereMesh(radius=R0,
-                             refinement_level=ref_level, degree=3,
-                             comm = ensemble.comm)
-cx = SpatialCoordinate(mesh)
-mesh.init_cell_orientations(cx)
-
-cx, cy, cz = SpatialCoordinate(mesh)
-
-outward_normals = CellNormal(mesh)
-perp = lambda u: cross(outward_normals, u)
-
-V1 = FunctionSpace(mesh, "BDM", 2)
-V2 = FunctionSpace(mesh, "DG", 1)
-W = MixedFunctionSpace((V1, V2))
-
-u, eta = TrialFunctions(W)
-v, phi = TestFunctions(W)
-
-Omega = Constant(7.292e-5)  # rotation rate
-f = 2*Omega*cz/Constant(R0)  # Coriolis parameter
-g = Constant(9.8)  # Gravitational constant
-b = Function(V2, name="Topography")
-c = sqrt(g*H)
-
-#Set up the exponential operator
+##############################################################################
+# Set up the exponential operator
+##############################################################################
 operator_in = Function(W)
 u_in, eta_in = split(operator_in)
-
-#D = eta + b
-
 u, eta = TrialFunctions(W)
 v, phi = TestFunctions(W)
 
@@ -128,10 +152,12 @@ cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
 cheby2 = cheby_exp(OperatorSolver, operator_in, operator_out,
                    ncheb, tol=1.0e-8, L=L, filter=filter2, filter_val=filter_val)
 
-#solvers for slow part
+
+##############################################################################
+# Set up solvers for the slow part
+##############################################################################
 USlow_in = Function(W) #value at previous timestep
 USlow_out = Function(W) #value at RK stage
-
 u0, eta0 = split(USlow_in)
 
 #RHS for Forward Euler step
@@ -164,50 +190,14 @@ else:
                         - uup('-')*(eta0('-') - b('-')))*dS
         )
 
-#with topography, D = H + eta - b
-
 SlowProb = LinearVariationalProblem(a, L, USlow_out)
 SlowSolver = LinearVariationalSolver(SlowProb,
                                      solver_parameters = params)
 
-t = 0.
-tmax = 60.*60.*args.tmax
-dumpt = args.dumpt*60.*60.
-tdump = 0.
 
-svals = np.arange(0.5, Mbar)/Mbar #tvals goes from -rho*dt/2 to rho*dt/2
-weights = np.exp(-1.0/svals/(1.0-svals))
-weights = weights/np.sum(weights)
-print(weights)
-svals -= 0.5
-
-rank = ensemble.ensemble_comm.rank
-expt = rho*dt*svals[rank]
-wt = weights[rank]
-print(wt,"weight",expt)
-
-x = SpatialCoordinate(mesh)
-
-u_0 = 20.0  # maximum amplitude of the zonal wind [m/s]
-u_max = Constant(u_0)
-u_expr = as_vector([-u_max*x[1]/R0, u_max*x[0]/R0, 0.0])
-eta_expr = - ((R0 * Omega * u_max + u_max*u_max/2.0)*(x[2]*x[2]/(R0*R0)))/g
-un = Function(V1, name="Velocity").project(u_expr)
-etan = Function(V2, name="Elevation").project(eta_expr)
-
-# Topography
-rl = pi/9.0
-lambda_x = atan_2(x[1]/R0, x[0]/R0)
-lambda_c = -pi/2.0
-phi_x = asin(x[2]/R0)
-phi_c = pi/6.0
-minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
-bexpr = 2000.0*(1 - sqrt(minarg)/rl)
-b.interpolate(bexpr)
-
-un1 = Function(V1)
-etan1 = Function(V1)
-
+##############################################################################
+# Time loop
+##############################################################################
 U = Function(W)
 DU = Function(W)
 U1 = Function(W)
@@ -218,19 +208,17 @@ W2 = Function(W)
 W3 = Function(W)
 V = Function(W)
 
-from timestepping_methods import *
-
 U_u, U_eta = U.split()
 U_u.assign(un)
 U_eta.assign(etan)
 
+#write out initial fields
 name = args.filename
 if rank==0:
     file_sw = File(name+'.pvd', comm=ensemble.comm)
     file_sw.write(un, etan, b)
 
-nonlinear = args.nonlinear
-
+#start time loop
 print ('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
     print(t)
@@ -260,6 +248,7 @@ while t < tmax + 0.5*dt:
             heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
                   expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
 
+    #dump
     if rank == 0:
         if tdump > dumpt - dt*0.5:
             un.assign(U_u)
@@ -268,6 +257,7 @@ while t < tmax + 0.5*dt:
             print("dumped at t =", t)
             tdump -= dumpt
 
+#check if dumbcheckpoint is working
 valf = assemble(etan*dx)
 
 print("create checkpointing file at rank =", rank)
