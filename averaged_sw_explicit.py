@@ -70,7 +70,7 @@ bexpr = 2000.0*(1 - sqrt(minarg)/rl)
 b = Function(V2, name="Topography")
 b.interpolate(bexpr)
 
-#checking cheby parameters based on ref_level
+#set Mbar
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
@@ -115,6 +115,8 @@ print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar)
 ##############################################################################
 # Set up the exponential operator
 ##############################################################################
+
+#apply the exponential of an operator using chebyshev approximation
 operator_in = Function(W)
 u_in, eta_in = split(operator_in)
 u, eta = TrialFunctions(W)
