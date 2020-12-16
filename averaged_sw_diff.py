@@ -58,10 +58,11 @@ f = Function(Vf).interpolate(f_expr)    # Coriolis frequency
 u_0 = 20.0  # maximum amplitude of the zonal wind [m/s]
 u_max = Constant(u_0)
 u_expr = as_vector([-u_max*x[1]/R, u_max*x[0]/R, 0.0])
-h_expr = H-((R*Omega*u_max+u_max*u_max/2.0)*(x[2]*x[2]/(R*R)))/g
-eta_expr = h_expr - H
+eta_expr = -((R*Omega*u_max+u_max*u_max/2.0)*(x[2]*x[2]/(R*R)))/g
+h_expr = eta_expr + H
+
 un = Function(V1, name="Velocity").project(u_expr)
-etan = Function(V2, name="Elevation").project(eta_expr)
+etan = Function(V2, name="Elevation").interpolate(eta_expr)
 hn = Function(V2).interpolate(h_expr)
 urn = Function(V1).assign(un)
 
@@ -103,8 +104,6 @@ t = 0.
 tmax = 60.*60.*args.tmax
 dumpt = args.dumpt*60.*60.
 tdump = 0.
-
-
 
 #print out settings
 print = PETSc.Sys.Print
@@ -197,6 +196,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 ##############################################################################
 # Set up depth advection solver (DG upwinded scheme)
 ##############################################################################
+dts = 900
 up = Function(V1)
 hp = Function(V2)
 hps = Function(V2)
@@ -206,8 +206,8 @@ hh = 0.5 * (hn + h)
 uh = 0.5 * (urn + up)
 n = FacetNormal(mesh)
 uup = 0.5 * (dot(uh, n) + abs(dot(uh, n)))
-Heqn = ((h - hn)*phi*dx - dt*inner(grad(phi), uh*hh)*dx
-        + dt*jump(phi)*(uup('+')*hh('+')-uup('-')*hh('-'))*dS)
+Heqn = ((h - hn)*phi*dx - dts*inner(grad(phi), uh*hh)*dx
+        + dts*jump(phi)*(uup('+')*hh('+')-uup('-')*hh('-'))*dS)
 Hproblem = LinearVariationalProblem(lhs(Heqn), rhs(Heqn), hps)
 lu_params = {'ksp_type': 'preonly',
              'pc_type': 'lu',
@@ -231,11 +231,11 @@ K = 0.5 * (inner(0.5 * (urn + up), 0.5 * (urn + up)))
 both = lambda u: 2*avg(u)
 outward_normals = CellNormal(mesh)
 perp = lambda arg: cross(outward_normals, arg)
-Ueqn = (inner(u - urn, v)*dx + dt*inner(perp(uh)*f, v)*dx
-        - dt*inner(perp(grad(inner(v, perp(ubar)))), uh)*dx
-        + dt*inner(both(perp(n)*inner(v, perp(ubar))),
+Ueqn = (inner(u - urn, v)*dx + dts*inner(perp(uh)*f, v)*dx
+        - dts*inner(perp(grad(inner(v, perp(ubar)))), uh)*dx
+        + dts*inner(both(perp(n)*inner(v, perp(ubar))),
                    both(Upwind*uh))*dS
-        - dt*div(v)*(g*(hh + b) + K)*dx)
+        - dts*div(v)*(g*(hh + b) + K)*dx)
 Uproblem = LinearVariationalProblem(lhs(Ueqn), rhs(Ueqn), ups)
 Usolver = LinearVariationalSolver(Uproblem,
                                   solver_parameters=lu_params,
@@ -249,9 +249,9 @@ deltaU, deltaH = HU.split()
 w, phi = TestFunctions(W)
 du, dh = TrialFunctions(W)
 alpha = 0.5
-HUlhs = (inner(w, du + alpha*dt*f*perp(du))*dx
-         - alpha*dt*div(w)*g*dh*dx
-         + phi*(dh + alpha*dt*H*div(du))*dx)
+HUlhs = (inner(w, du + alpha*dts*f*perp(du))*dx
+         - alpha*dts*div(w)*g*dh*dx
+         + phi*(dh + alpha*dts*H*div(du))*dx)
 HUrhs = -inner(w, up - ups)*dx - phi*(hp - hps)*dx
 HUproblem = LinearVariationalProblem(HUlhs, HUrhs, HU)
 params = {'ksp_type': 'preonly',
@@ -280,6 +280,8 @@ U_u.assign(un)
 U_eta.assign(etan)
 
 k_max = 4        # Maximum number of Picard iterations
+iter_max = int(dt/dts)
+print("dt, dts, iter_max =", dt, dts, iter_max)
 u_out = Function(V1, name="Velocity").assign(urn)
 eta_out = Function(V2, name="Elevation").assign(hn + b - H)
 u_diff = Function(V1, name="Velocity Difference").assign(un - u_out)
@@ -300,9 +302,14 @@ if rank==0:
     file_sw.write(un, etan, b)
     file_r.write(u_out, eta_out, b)
     file_d.write(u_diff, eta_diff, b)
+    area = assemble(1*dx(domain=f.ufl_domain()))
+    print('area', area)
+    u_norm = errornorm(un, u_out)/area
+    eta_norm = errornorm(etan, eta_out)/area
+    print('u_norm', u_norm, 'eta_norm', eta_norm)
 
 #start time loop
-print ('tmax', tmax, 'dt', dt)
+print('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
     print(t)
     t += dt
@@ -332,36 +339,48 @@ while t < tmax + 0.5*dt:
                   expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
 
     if rank == 0:
-        #run the serial solver
-        up.assign(urn)
-        hp.assign(hn)
+    #run the serial solver
 
-        #start picard cycle
-        for i in range(k_max):
-            #advect to get candidates
-            Hsolver.solve()
-            Usolver.solve()
+        for iter in range(iter_max):
+            print(iter)
+            up.assign(urn)
+            hp.assign(hn)
 
-            #linear solve for updates
-            HUsolver.solve()
+            #start picard cycle
+            for i in range(k_max):
+                #advect to get candidates
+                Hsolver.solve()
+                Usolver.solve()
 
-            #increment updates
-            up += deltaU
-            hp += deltaH
+                #linear solve for updates
+                HUsolver.solve()
 
-        #update fields for next time step
-        urn.assign(up)
-        hn.assign(hp)
+                #increment updates
+                up += deltaU
+                hp += deltaH
 
-        #dump
+            #update fields for next time step
+            urn.assign(up)
+            hn.assign(hp)
+
+        #dumping
         if tdump > dumpt - dt*0.5:
+            #dump averaged results
             un.assign(U_u)
             etan.assign(U_eta)
             file_sw.write(un, etan, b)
+            #dump non averaged results
             u_out.assign(urn)
             eta_out.assign(hn + b - H)
             file_r.write(u_out, eta_out, b)
+            #dump differences
             u_diff.assign(un - u_out)
             eta_diff.assign(etan - eta_out)
             file_d.write(u_diff, eta_diff, b)
+            #calculate l2 norm
+            u_norm = errornorm(un, u_out)/area
+            eta_norm = errornorm(etan, eta_out)/area
+            print('u_norm', u_norm, 'eta_norm', eta_norm)
+            #update dumpt
+            print("dumped at t =", t)
             tdump -= dumpt
