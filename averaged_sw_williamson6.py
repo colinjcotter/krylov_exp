@@ -17,12 +17,12 @@ parser.add_argument('--rho', type=float, default=1, help='Averaging window width
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
 parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
+parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
-parser.add_argument('--filename', type=str, default='sw_rossby')
+parser.add_argument('--filename', type=str, default='sw_rossby_triangle')
 args = parser.parse_known_args()
 args = args[0]
 filter = args.filter
@@ -43,7 +43,7 @@ H = Constant(8000.)
 Omega = Constant(7.292e-5)  # rotation rate
 g = Constant(9.8)  # Gravitational constant
 mesh = IcosahedralSphereMesh(radius=R0,
-                             refinement_level=ref_level, degree=3,
+                             refinement_level=ref_level,
                              comm = ensemble.comm)
 x = SpatialCoordinate(mesh)
 global_normal = as_vector([x[0], x[1], x[2]])
@@ -226,7 +226,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 ##############################################################################
 # Set up depth advection solver (DG upwinded scheme)
 ##############################################################################
-dts = 360
+dts = 900
 up = Function(V1)
 hp = Function(V2)
 hps = Function(V2)
