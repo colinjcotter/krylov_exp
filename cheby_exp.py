@@ -18,7 +18,7 @@ class cheby_exp(object):
         operator_in: the input to operator_solver
         operator_out: the output to operator_solver
         ncheb: number of Chebyshev polynomials to approximate exp
-        tol: tolerance to compress Chebyshev expansion by 
+        tol: tolerance to compress Chebyshev expansion by
         (removes terms from the high degree end until total L^1 norm
         of removed terms > tol)
         L: approximate exp on range [-L*i, L*i]
@@ -42,8 +42,41 @@ class cheby_exp(object):
         self.ChebCoeffs = FourierCoeffs[:ncheb+2]
         self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
         self.ChebCoeffs[-1] = self.ChebCoeffs[-1]/2
-        
+
+        #initialise T0
+        A = 0
+        Tnm1 = 1.0
+        Tn = A/(L*1j)
+        nc = 10000
+        fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
+
+        for i in range(2,nc+1):
+            Tnm2 = Tnm1
+            Tnm1 = Tn
+            Tn = 2*A*Tnm1/(L*1j) - Tnm2
+            fvals0 += self.ChebCoeffs[i]*Tn
+
+        print("fvals0 before initialisation", fvals0)
+
+        for i in range(len(self.ChebCoeffs)):
+            self.ChebCoeffs[i] = self.ChebCoeffs[i]/fvals0
+
+        #check if fvals0 = 1
+        Tnm1 = 1.0
+        Tn = A/(L*1j)
+        nc = 10000
+        fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
+
+        for i in range(2,nc+1):
+            Tnm2 = Tnm1
+            Tnm1 = Tn
+            Tn = 2*A*Tnm1/(L*1j) - Tnm2
+            fvals0 += self.ChebCoeffs[i]*Tn
+
+        print("fvals0 after initialisation", fvals0)
+
         #cheby compression
+        print("ncheb before compression", ncheb)
         nrm = 0.
         Compressed = False
         while nrm + abs(self.ChebCoeffs[ncheb+1]) < tol:
@@ -51,8 +84,11 @@ class cheby_exp(object):
             ncheb -= 1
             Compressed = True
         assert Compressed
+        print("ncheb after compression", ncheb)
 
+#        ncheb = 100
         self.ncheb = ncheb
+        print("ncheb is set to", ncheb)
         self.L = L
 
         FS = operator_in.function_space()
@@ -64,7 +100,7 @@ class cheby_exp(object):
         self.T_i = Function(FS)
 
         self.dy = Function(FS)
-        
+
     def apply(self, x, y, t):
         L = self.L
         #initially Tm1 contains T_0(A)x
