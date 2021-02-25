@@ -16,8 +16,8 @@ parser.add_argument('--dt', type=float, default=2, help='Timestep in hours. Defa
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
-parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
+parser.add_argument('--filter', type=bool, default=False, help='Use a filter in the averaging exponential')
+parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
@@ -31,6 +31,7 @@ filter_val = args.filter_val
 timestepping = args.timestepping
 asselin = args.asselin
 ref_level = args.ref_level
+print(args)
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
@@ -103,7 +104,9 @@ svals -= 0.5
 t = 0.
 tmax = 60.*60.*args.tmax
 dumpt = args.dumpt*60.*60.
+normt = 24.*60.*60.
 tdump = 0.
+tnorm = 0.
 
 #print out settings
 print = PETSc.Sys.Print
@@ -196,7 +199,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 ##############################################################################
 # Set up depth advection solver (DG upwinded scheme)
 ##############################################################################
-dts = 900
+dts = 180
 up = Function(V1)
 hp = Function(V2)
 hps = Function(V2)
@@ -291,9 +294,12 @@ eta_diff = Function(V2, name="Elevation Difference").assign(etan - eta_out)
 rank = ensemble.ensemble_comm.rank
 expt = rho*dt*svals[rank]
 wt = weights[rank]
-print(wt,"weight",expt)
+print(wt, "weight", expt)
+print("svals", svals)
 
 #write out initial fields
+u_norm = []
+eta_norm = []
 name = args.filename
 if rank==0:
     file_sw = File(name+'_avg.pvd', comm=ensemble.comm)
@@ -304,9 +310,13 @@ if rank==0:
     file_d.write(u_diff, eta_diff, b)
     area = assemble(1*dx(domain=f.ufl_domain()))
     print('area', area)
-    u_norm = errornorm(un, u_out)/area
-    eta_norm = errornorm(etan, eta_out)/area
-    print('u_norm', u_norm, 'eta_norm', eta_norm)
+    unorm = errornorm(un, u_out)/norm(u_out)
+    etanorm = errornorm(etan, eta_out)/norm(eta_out)
+    print('u_norm', unorm, 'eta_norm', etanorm)
+    u_norm.append(unorm)
+    eta_norm.append(etanorm)
+    print('u_norm =', u_norm)
+    print('eta_norm =', eta_norm)
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
@@ -314,6 +324,7 @@ while t < tmax + 0.5*dt:
     print(t)
     t += dt
     tdump += dt
+    tnorm += dt
 
     if t < dt*1.5 and timestepping == 'leapfrog':
         U_old = Function(W)
@@ -378,9 +389,16 @@ while t < tmax + 0.5*dt:
             eta_diff.assign(etan - eta_out)
             file_d.write(u_diff, eta_diff, b)
             #calculate l2 norm
-            u_norm = errornorm(un, u_out)/area
-            eta_norm = errornorm(etan, eta_out)/area
-            print('u_norm', u_norm, 'eta_norm', eta_norm)
+            unorm = errornorm(un, u_out)/norm(u_out)
+            etanorm = errornorm(etan, eta_out)/norm(eta_out)
+            print('u_norm', unorm, 'eta_norm', etanorm)
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
+
+        if tnorm > normt - dt*0.5:
+            u_norm.append(unorm)
+            eta_norm.append(etanorm)
+            print('u_norm =', u_norm)
+            print('eta_norm =', eta_norm)
+            tnorm -= normt
