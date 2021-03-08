@@ -4,6 +4,7 @@ from firedrake.petsc import PETSc
 from math import pi
 from math import ceil
 from timestepping_methods import *
+from latlon import *
 import numpy as np
 import argparse
 
@@ -318,6 +319,42 @@ if rank==0:
     print('u_norm =', u_norm)
     print('eta_norm =', eta_norm)
 
+    mesh_ll = get_latlon_mesh(mesh)
+    file_avg_ll = File(name+'_avg_latlon.pvd', comm=ensemble.comm)
+    file_serial_ll = File(name+'_serial_latlon.pvd', comm=ensemble.comm)
+    file_diff_ll = File(name+'_diff_latlon.pvd', comm=ensemble.comm)
+    field_un = Function(
+        functionspaceimpl.WithGeometry(
+            un.function_space(), mesh_ll),
+        val=un.topological)
+    field_etan = Function(
+        functionspaceimpl.WithGeometry(
+            etan.function_space(), mesh_ll),
+        val=etan.topological)
+    field_b = Function(
+        functionspaceimpl.WithGeometry(
+            b.function_space(), mesh_ll),
+        val=b.topological)
+    field_uout = Function(
+        functionspaceimpl.WithGeometry(
+            u_out.function_space(), mesh_ll),
+        val=u_out.topological)
+    field_etaout = Function(
+        functionspaceimpl.WithGeometry(
+            eta_out.function_space(), mesh_ll),
+        val=eta_out.topological)
+    field_udiff = Function(
+        functionspaceimpl.WithGeometry(
+            u_diff.function_space(), mesh_ll),
+        val=u_diff.topological)
+    field_etadiff = Function(
+        functionspaceimpl.WithGeometry(
+            eta_diff.function_space(), mesh_ll),
+        val=eta_diff.topological)
+    file_avg_ll.write(field_un, field_etan, field_b)
+    file_serial_ll.write(field_uout, field_etaout, field_b)
+    file_diff_ll.write(field_udiff, field_etadiff, field_b)
+
 #start time loop
 print('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
@@ -380,14 +417,17 @@ while t < tmax + 0.5*dt:
             un.assign(U_u)
             etan.assign(U_eta)
             file_sw.write(un, etan, b)
+            file_avg_ll.write(field_un, field_etan, field_b)
             #dump non averaged results
             u_out.assign(urn)
             eta_out.assign(hn + b - H)
             file_r.write(u_out, eta_out, b)
+            file_serial_ll.write(field_uout, field_etaout, field_b)
             #dump differences
             u_diff.assign(un - u_out)
             eta_diff.assign(etan - eta_out)
             file_d.write(u_diff, eta_diff, b)
+            file_diff_ll.write(field_udiff, field_etadiff, field_b)
             #calculate l2 norm
             unorm = errornorm(un, u_out)/norm(u_out)
             etanorm = errornorm(etan, eta_out)/norm(eta_out)
@@ -402,3 +442,4 @@ while t < tmax + 0.5*dt:
             print('u_norm =', u_norm)
             print('eta_norm =', eta_norm)
             tnorm -= normt
+
