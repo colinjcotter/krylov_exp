@@ -13,7 +13,7 @@ x = L*cos(t1)
 #approximating exp(ix) on interval [-L,L]
 #by \sum_i a_i T_i(ix)
 
-fvals = exp(pi*1j*x)
+fvals = exp(1j*x)
 thetas = concatenate((flipud(t1), -t1[1:-1]))
 valsUnitDisc = concatenate((flipud(fvals), fvals[1:-1]))
 FourierCoeffs = fftpack.fft(valsUnitDisc)/n
@@ -29,25 +29,39 @@ nf = 500
 for i in range(nf):
     fvals0 += ChebCoeffs[i]*cos(i*thetas)
 
-pyplot.plot(thetas,real(fvals0),'.')
-pyplot.plot(thetas,real(valsUnitDisc),'-k')
-pyplot.show()
+#pyplot.plot(thetas,real(fvals0),'.')
+#pyplot.plot(thetas,real(valsUnitDisc),'-k')
+#pyplot.show()
 
-pyplot.plot(thetas,imag(fvals0),'.')
-pyplot.plot(thetas,imag(valsUnitDisc),'-k')
-pyplot.show()
+#pyplot.plot(thetas,imag(fvals0),'.')
+#pyplot.plot(thetas,imag(valsUnitDisc),'-k')
+#pyplot.show()
 
 
 #Compute Forward transform using iterative formula
-fvals0 = 0*fvals
+nc = 500
 
 #initialise T0
+A = 0.*1j
+Tnm1 = 1.0+0.0j
+Tn = A/(L*1j)
+f0 = ChebCoeffs[0]*Tnm1 + ChebCoeffs[1]*Tn
+for i in range(2,nc+1):
+    Tnm2 = Tnm1
+    Tnm1 = Tn
+    Tn = 2*A*Tnm1/(L*1j) - Tnm2
 
-A = 1j*x
+    f0 += ChebCoeffs[i]*Tn
+
+print(f0)
+ChebCoeffs /= f0
+
+fvals0 = 0*fvals
+x2 = arange(-L,L,L*0.001)
+A = 1j*x2
 Tnm1 = 1.0
 Tn = A/(L*1j)
 
-nc = 500
 fvals0 = ChebCoeffs[0]*Tnm1 + ChebCoeffs[1]*Tn
 
 for i in range(2,nc+1):
@@ -56,13 +70,16 @@ for i in range(2,nc+1):
     Tn = 2*A*Tnm1/(L*1j) - Tnm2
 
     fvals0 += ChebCoeffs[i]*Tn
-
-pyplot.plot(x,real(fvals),'.')
-pyplot.plot(x,real(fvals0),'-k')
-pyplot.show()
-
-pyplot.plot(x,imag(fvals),'.')
-pyplot.plot(x,imag(fvals0),'-k')
+    
+print(absolute(fvals0).max())
+    
+#pyplot.plot(x,real(fvals),'-b')
+pyplot.plot(x2,real(fvals0),'.r')
+pyplot.plot(x2,sqrt(real(fvals0)**2 + imag(fvals0)**2),'--b')
+pyplot.plot(x,cos(x),'--r')
+#pyplot.plot(x,imag(fvals),'-g')
+pyplot.plot(x2,imag(fvals0),'.k')
+pyplot.plot(x,sin(x),'--k')
 pyplot.show()
 
 A = 0.1*array([[0,-1],[1,0]])
@@ -88,6 +105,3 @@ for i in range(2,nc+1):
     
     y += real(ChebCoeffs[i]*T_r + ChebCoeffs[i]*T_i)
 
-print(exp(A))
-print(dot(exp(A),v))
-print(y)
