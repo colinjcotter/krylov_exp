@@ -4,20 +4,21 @@ from firedrake.petsc import PETSc
 from math import pi
 from math import ceil
 from timestepping_methods import *
+from latlon import *
 import numpy as np
 import argparse
 
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
-parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
+parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=6, help='Dump time in hours. Default 6.')
 parser.add_argument('--dt', type=float, default=2, help='Timestep in hours. Default 2.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
-parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=True, help='Use a filter for cheby2')
+parser.add_argument('--filter', type=bool, default=False, help='Use a filter in the averaging exponential')
+parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
@@ -31,6 +32,7 @@ filter_val = args.filter_val
 timestepping = args.timestepping
 asselin = args.asselin
 ref_level = args.ref_level
+print(args)
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
@@ -103,7 +105,9 @@ svals -= 0.5
 t = 0.
 tmax = 60.*60.*args.tmax
 dumpt = args.dumpt*60.*60.
+normt = 24.*60.*60.
 tdump = 0.
+tnorm = 0.
 
 #print out settings
 print = PETSc.Sys.Print
@@ -196,7 +200,7 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 ##############################################################################
 # Set up depth advection solver (DG upwinded scheme)
 ##############################################################################
-dts = 900
+dts = 180
 up = Function(V1)
 hp = Function(V2)
 hps = Function(V2)
@@ -291,9 +295,12 @@ eta_diff = Function(V2, name="Elevation Difference").assign(etan - eta_out)
 rank = ensemble.ensemble_comm.rank
 expt = rho*dt*svals[rank]
 wt = weights[rank]
-print(wt,"weight",expt)
+print(wt, "weight", expt)
+print("svals", svals)
 
 #write out initial fields
+u_norm = []
+eta_norm = []
 name = args.filename
 if rank==0:
     file_sw = File(name+'_avg.pvd', comm=ensemble.comm)
@@ -304,9 +311,56 @@ if rank==0:
     file_d.write(u_diff, eta_diff, b)
     area = assemble(1*dx(domain=f.ufl_domain()))
     print('area', area)
-    u_norm = errornorm(un, u_out)/area
-    eta_norm = errornorm(etan, eta_out)/area
-    print('u_norm', u_norm, 'eta_norm', eta_norm)
+    unorm = errornorm(un, u_out)/norm(u_out)
+    etanorm = errornorm(etan, eta_out)/norm(eta_out)
+    print('u_norm', unorm, 'eta_norm', etanorm)
+    u_norm.append(unorm)
+    eta_norm.append(etanorm)
+    print('u_norm =', u_norm)
+    print('eta_norm =', eta_norm)
+
+    mesh_ll = get_latlon_mesh(mesh)
+    file_avg_ll = File(name+'_avg_latlon.pvd', comm=ensemble.comm)
+    file_serial_ll = File(name+'_serial_latlon.pvd', comm=ensemble.comm)
+    file_diff_ll = File(name+'_diff_latlon.pvd', comm=ensemble.comm)
+    field_un = Function(
+        functionspaceimpl.WithGeometry(
+            un.function_space(), mesh_ll),
+        val=un.topological)
+    field_etan = Function(
+        functionspaceimpl.WithGeometry(
+            etan.function_space(), mesh_ll),
+        val=etan.topological)
+    field_b = Function(
+        functionspaceimpl.WithGeometry(
+            b.function_space(), mesh_ll),
+        val=b.topological)
+    field_uout = Function(
+        functionspaceimpl.WithGeometry(
+            u_out.function_space(), mesh_ll),
+        val=u_out.topological)
+    field_etaout = Function(
+        functionspaceimpl.WithGeometry(
+            eta_out.function_space(), mesh_ll),
+        val=eta_out.topological)
+    field_udiff = Function(
+        functionspaceimpl.WithGeometry(
+            u_diff.function_space(), mesh_ll),
+        val=u_diff.topological)
+    field_etadiff = Function(
+        functionspaceimpl.WithGeometry(
+            eta_diff.function_space(), mesh_ll),
+        val=eta_diff.topological)
+    file_avg_ll.write(field_un, field_etan, field_b)
+    file_serial_ll.write(field_uout, field_etaout, field_b)
+    file_diff_ll.write(field_udiff, field_etadiff, field_b)
+
+    #create checkpointing file
+    print("create checkpointing file at rank =", rank)
+    chk = DumbCheckpoint("dump_explicit", mode=FILE_CREATE, comm = ensemble.comm)
+    chk.store(un)
+    chk.store(etan)
+    chk.store(b)
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
@@ -314,6 +368,7 @@ while t < tmax + 0.5*dt:
     print(t)
     t += dt
     tdump += dt
+    tnorm += dt
 
     if t < dt*1.5 and timestepping == 'leapfrog':
         U_old = Function(W)
@@ -369,18 +424,54 @@ while t < tmax + 0.5*dt:
             un.assign(U_u)
             etan.assign(U_eta)
             file_sw.write(un, etan, b)
+            file_avg_ll.write(field_un, field_etan, field_b)
             #dump non averaged results
             u_out.assign(urn)
             eta_out.assign(hn + b - H)
             file_r.write(u_out, eta_out, b)
+            file_serial_ll.write(field_uout, field_etaout, field_b)
             #dump differences
             u_diff.assign(un - u_out)
             eta_diff.assign(etan - eta_out)
             file_d.write(u_diff, eta_diff, b)
+            file_diff_ll.write(field_udiff, field_etadiff, field_b)
             #calculate l2 norm
-            u_norm = errornorm(un, u_out)/area
-            eta_norm = errornorm(etan, eta_out)/area
-            print('u_norm', u_norm, 'eta_norm', eta_norm)
+            unorm = errornorm(un, u_out)/norm(u_out)
+            etanorm = errornorm(etan, eta_out)/norm(eta_out)
+            print('u_norm', unorm, 'eta_norm', etanorm)
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
+            #checkpointing
+            chk.store(un)
+            chk.store(etan)
+            chk.store(b)
+
+        if tnorm > normt - dt*0.5:
+            u_norm.append(unorm)
+            eta_norm.append(etanorm)
+            print('u_norm =', u_norm)
+            print('eta_norm =', eta_norm)
+            tnorm -= normt
+
+if rank == 0:
+    chk.close()
+
+    #check if dumbcheckpoint is working
+    und = Function(V1)
+    etand = Function(V2)
+    bd = Function(V2)
+
+    chkfile = DumbCheckpoint("dump_explicit", mode=FILE_READ, comm = ensemble.comm)
+    chkfile.load(und, name="Velocity")
+    chkfile.load(etand, name="Elevation")
+    chkfile.load(bd, name="Topography")
+
+    valf = assemble(etan*dx)
+    valg = assemble(etand*dx)
+
+    print("valf = ", valf)
+    print("valg = ", valg)
+    assert(valf == valg)
+
+    chkfile.close()
