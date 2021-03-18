@@ -11,7 +11,7 @@ import argparse
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
-parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
+parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=6, help='Dump time in hours. Default 6.')
 parser.add_argument('--dt', type=float, default=2, help='Timestep in hours. Default 2.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
@@ -355,6 +355,13 @@ if rank==0:
     file_serial_ll.write(field_uout, field_etaout, field_b)
     file_diff_ll.write(field_udiff, field_etadiff, field_b)
 
+    #create checkpointing file
+    print("create checkpointing file at rank =", rank)
+    chk = DumbCheckpoint("dump_explicit", mode=FILE_CREATE, comm = ensemble.comm)
+    chk.store(un)
+    chk.store(etan)
+    chk.store(b)
+
 #start time loop
 print('tmax', tmax, 'dt', dt)
 while t < tmax + 0.5*dt:
@@ -435,6 +442,10 @@ while t < tmax + 0.5*dt:
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
+            #checkpointing
+            chk.store(un)
+            chk.store(etan)
+            chk.store(b)
 
         if tnorm > normt - dt*0.5:
             u_norm.append(unorm)
@@ -443,3 +454,24 @@ while t < tmax + 0.5*dt:
             print('eta_norm =', eta_norm)
             tnorm -= normt
 
+if rank == 0:
+    chk.close()
+
+    #check if dumbcheckpoint is working
+    und = Function(V1)
+    etand = Function(V2)
+    bd = Function(V2)
+
+    chkfile = DumbCheckpoint("dump_explicit", mode=FILE_READ, comm = ensemble.comm)
+    chkfile.load(und, name="Velocity")
+    chkfile.load(etand, name="Elevation")
+    chkfile.load(bd, name="Topography")
+
+    valf = assemble(etan*dx)
+    valg = assemble(etand*dx)
+
+    print("valf = ", valf)
+    print("valg = ", valg)
+    assert(valf == valg)
+
+    chkfile.close()
