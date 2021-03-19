@@ -43,14 +43,26 @@ class cheby_exp(object):
         self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
         self.ChebCoeffs[-1] = self.ChebCoeffs[-1]/2
 
+        #cheby compression
+        print("ncheb before compression", ncheb)
+        nrm = 0.
+        Compressed = False
+        while nrm + abs(self.ChebCoeffs[ncheb+1]) < tol:
+            nrm += abs(self.ChebCoeffs[ncheb+1])
+            ncheb -= 1
+            Compressed = True
+        assert Compressed
+        print("ncheb after compression", ncheb)
+        self.ncheb = ncheb
+        print("ncheb is set to", ncheb)
+
         #initialise T0
         A = 0
         Tnm1 = 1.0
         Tn = A/(L*1j)
-        nc = 10000
         fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
 
-        for i in range(2,nc+1):
+        for i in range(2,ncheb+1):
             Tnm2 = Tnm1
             Tnm1 = Tn
             Tn = 2*A*Tnm1/(L*1j) - Tnm2
@@ -64,10 +76,9 @@ class cheby_exp(object):
         #check if fvals0 = 1
         Tnm1 = 1.0
         Tn = A/(L*1j)
-        nc = 10000
         fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
 
-        for i in range(2,nc+1):
+        for i in range(2,ncheb+1):
             Tnm2 = Tnm1
             Tnm1 = Tn
             Tn = 2*A*Tnm1/(L*1j) - Tnm2
@@ -75,20 +86,6 @@ class cheby_exp(object):
 
         print("fvals0 after initialisation", fvals0)
 
-        #cheby compression
-        print("ncheb before compression", ncheb)
-        nrm = 0.
-        Compressed = False
-        while nrm + abs(self.ChebCoeffs[ncheb+1]) < tol:
-            nrm += abs(self.ChebCoeffs[ncheb+1])
-            ncheb -= 1
-            Compressed = True
-        assert Compressed
-        print("ncheb after compression", ncheb)
-
-#        ncheb = 100
-        self.ncheb = ncheb
-        print("ncheb is set to", ncheb)
         self.L = L
 
         FS = operator_in.function_space()

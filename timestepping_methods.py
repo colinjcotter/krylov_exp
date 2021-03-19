@@ -1,5 +1,5 @@
 #timestepping options for averaged_sw_explicit.py
-#rk2/heuns/ssprk3/leapfrog
+#rk2/rk4/heuns/ssprk3/leapfrog
 
 def rk2(U, USlow_in, USlow_out, DU, V, W,
         expt, ensemble, cheby, cheby2, SlowSolver, wt, dt):
