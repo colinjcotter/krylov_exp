@@ -12,18 +12,18 @@ import argparse
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
 parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
-parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 6.')
-parser.add_argument('--dt', type=float, default=2, help='Timestep in hours. Default 2.')
+parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
+parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Default 1.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
-parser.add_argument('--filter', type=bool, default=False, help='Use a filter in the averaging exponential')
+parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
 parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
-parser.add_argument('--timestepping', type=str, default='ssprk3', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
+parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
-parser.add_argument('--filename', type=str, default='explicit')
+parser.add_argument('--filename', type=str, default='control_lev3')
 args = parser.parse_known_args()
 args = args[0]
 filter = args.filter
@@ -298,20 +298,41 @@ wt = weights[rank]
 print(wt, "weight", expt)
 print("svals", svals)
 
-u_norm = []
 eta_norm = []
+u_norm_Hdiv = []
+u_norm_L2 = []
 name = args.filename
 if rank==0:
-    #calculate norm at the initial state
-    area = assemble(1*dx(domain=f.ufl_domain()))
-    print('area', area)
-    unorm = errornorm(un, u_out)/norm(u_out)
+    #calculate norms at the initial state
     etanorm = errornorm(etan, eta_out)/norm(eta_out)
-    print('u_norm', unorm, 'eta_norm', etanorm)
-    u_norm.append(unorm)
+    unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
+    unorm_L2 = errornorm(un, u_out)/norm(u_out)
+    print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
     eta_norm.append(etanorm)
-    print('u_norm =', u_norm)
-    print('eta_norm =', eta_norm)
+    u_norm_Hdiv.append(unorm_Hdiv)
+    u_norm_L2.append(unorm_L2)
+    print('etanorm =', eta_norm)
+    print('unorm_Hdiv =', u_norm_Hdiv)
+    print('unorm_L2 =', u_norm_L2)
+
+    #setup PV solver
+    PV = Function(Vf, name="PotentialVorticity")
+    gamma = TestFunction(Vf)
+    q = TrialFunction(Vf)
+    D = etan + H - b
+    a = q*gamma*D*dx
+    L = (- inner(perp(grad(gamma)), un))*dx + gamma*f*dx
+    PVproblem = LinearVariationalProblem(a, L, PV)
+    PVsolver = LinearVariationalSolver(PVproblem, solver_parameters={"ksp_type": "cg"})
+    PVsolver.solve()
+    PVout = Function(Vf, name="PotentialVorticity")
+    Dout = eta_out + H - b
+    a = q*gamma*Dout*dx
+    L = (- inner(perp(grad(gamma)), u_out))*dx + gamma*f*dx
+    PVoutproblem = LinearVariationalProblem(a, L, PVout)
+    PVoutsolver = LinearVariationalSolver(PVoutproblem, solver_parameters={"ksp_type": "cg"})
+    PVoutsolver.solve()
+    PVdiff = Function(Vf, name="PV Difference").assign(PV- PVout)
 
     #write out initial fields
     mesh_ll = get_latlon_mesh(mesh)
@@ -324,6 +345,9 @@ if rank==0:
     field_etan = Function(
         functionspaceimpl.WithGeometry(etan.function_space(), mesh_ll),
         val=etan.topological)
+    field_PV = Function(
+        functionspaceimpl.WithGeometry(PV.function_space(), mesh_ll),
+        val=PV.topological)
     field_b = Function(
         functionspaceimpl.WithGeometry(b.function_space(), mesh_ll),
         val=b.topological)
@@ -333,15 +357,21 @@ if rank==0:
     field_etaout = Function(
         functionspaceimpl.WithGeometry(eta_out.function_space(), mesh_ll),
         val=eta_out.topological)
+    field_PVout = Function(
+        functionspaceimpl.WithGeometry(PVout.function_space(), mesh_ll),
+        val=PVout.topological)
     field_udiff = Function(
         functionspaceimpl.WithGeometry(u_diff.function_space(), mesh_ll),
         val=u_diff.topological)
     field_etadiff = Function(
         functionspaceimpl.WithGeometry(eta_diff.function_space(), mesh_ll),
         val=eta_diff.topological)
-    file_sw.write(field_un, field_etan, field_b)
-    file_r.write(field_uout, field_etaout, field_b)
-    file_d.write(field_udiff, field_etadiff, field_b)
+    field_PVdiff = Function(
+        functionspaceimpl.WithGeometry(PVdiff.function_space(), mesh_ll),
+        val=PVdiff.topological)
+    file_sw.write(field_un, field_etan, field_PV, field_b)
+    file_r.write(field_uout, field_etaout, field_PVout, field_b)
+    file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
 
     #create checkpointing file
     print("create checkpointing file at rank =", rank)
@@ -385,7 +415,6 @@ while t < tmax + 0.5*dt:
     #run the serial solver
 
         for iter in range(iter_max):
-            print(iter)
             up.assign(urn)
             hp.assign(hn)
 
@@ -411,32 +440,38 @@ while t < tmax + 0.5*dt:
             #dump averaged results
             un.assign(U_u)
             etan.assign(U_eta)
-            file_sw.write(field_un, field_etan, field_b)
+            PVsolver.solve()
+            file_sw.write(field_un, field_etan, field_PV, field_b)
             #dump non averaged results
             u_out.assign(urn)
             eta_out.assign(hn + b - H)
-            file_r.write(field_uout, field_etaout, field_b)
+            PVoutsolver.solve()
+            file_r.write(field_uout, field_etaout, field_PVout, field_b)
             #dump differences
             u_diff.assign(un - u_out)
             eta_diff.assign(etan - eta_out)
-            file_d.write(field_udiff, field_etadiff, field_b)
+            PVdiff.assign(PV- PVout)
+            file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
             #checkpointing
             chk.store(un)
             chk.store(etan)
             chk.store(b)
-            #calculate l2 norm
-            unorm = errornorm(un, u_out)/norm(u_out)
+            #calculate norms
             etanorm = errornorm(etan, eta_out)/norm(eta_out)
-            print('u_norm', unorm, 'eta_norm', etanorm)
+            unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
+            unorm_L2 = errornorm(un, u_out)/norm(u_out)
+            print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
 
         if tnorm > normt - dt*0.5:
-            u_norm.append(unorm)
             eta_norm.append(etanorm)
-            print('u_norm =', u_norm)
-            print('eta_norm =', eta_norm)
+            u_norm_Hdiv.append(unorm_Hdiv)
+            u_norm_L2.append(unorm_L2)
+            print('etanorm =', eta_norm)
+            print('unorm_Hdiv =', u_norm_Hdiv)
+            print('unorm_L2 =', u_norm_L2)
             tnorm -= normt
 
 if rank == 0:
