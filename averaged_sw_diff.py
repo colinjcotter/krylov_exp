@@ -23,7 +23,8 @@ parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for 
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
-parser.add_argument('--filename', type=str, default='control_lev3')
+parser.add_argument('--filename', type=str, default='control')
+parser.add_argument('--pickup', type=bool, default=False, help='Pickup the result from the checkpoint.')
 args = parser.parse_known_args()
 args = args[0]
 filter = args.filter
@@ -63,11 +64,6 @@ u_expr = as_vector([-u_max*x[1]/R, u_max*x[0]/R, 0.0])
 eta_expr = -((R*Omega*u_max+u_max*u_max/2.0)*(x[2]*x[2]/(R*R)))/g
 h_expr = eta_expr + H
 
-un = Function(V1, name="Velocity").project(u_expr)
-etan = Function(V2, name="Elevation").interpolate(eta_expr)
-hn = Function(V2).interpolate(h_expr)
-urn = Function(V1).assign(un)
-
 #topography (D = H + eta - b)
 rl = pi/9.0
 lambda_x = atan_2(x[1]/R0, x[0]/R0)
@@ -78,7 +74,6 @@ minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
 bexpr = 2000.0*(1 - sqrt(minarg)/rl)
 b = Function(V2, name="Topography")
 b.interpolate(bexpr)
-hn -= b
 
 #checking cheby parameters based on ref_level
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
@@ -115,6 +110,27 @@ assert Mbar==COMM_WORLD.size, str(Mbar)+' '+str(COMM_WORLD.size)
 print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
 print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar))
 print(args)
+
+#pickup the result
+if args.pickup:
+    chkfile = DumbCheckpoint(name, mode=FILE_READ, comm = ensemble.comm)
+    un = Function(V1, name="Velocity")
+    etan = Function(V2, name="Elevation")
+    urn = Function(V1, name="VelocityR")
+    hn = Function(V2, name="Depth")
+    chkfile.load(un, name="Velocity")
+    chkfile.load(etan, name="Elevation")
+    chkfile.load(urn, name="VelocityR")
+    chkfile.load(hn, name="Depth")
+    t = chkfile.read_attribute("/", "time")
+    tdump = chkfile.read_attribute("/", "tdump")
+    tnorm = chkfile.read_attribute("/", "tnorm")
+else:
+    un = Function(V1, name="Velocity").project(u_expr)
+    etan = Function(V2, name="Elevation").interpolate(eta_expr)
+    urn = Function(V1, name="VelocityR").assign(un)
+    hn = Function(V2, name="Depth").interpolate(h_expr)
+    hn -= b
 
 ##############################################################################
 # Set up the exponential operator
@@ -369,16 +385,14 @@ if rank==0:
     field_PVdiff = Function(
         functionspaceimpl.WithGeometry(PVdiff.function_space(), mesh_ll),
         val=PVdiff.topological)
-    file_sw.write(field_un, field_etan, field_PV, field_b)
-    file_r.write(field_uout, field_etaout, field_PVout, field_b)
-    file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
+    if not args.pickup:
+        file_sw.write(field_un, field_etan, field_PV, field_b)
+        file_r.write(field_uout, field_etaout, field_PVout, field_b)
+        file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
 
     #create checkpointing file
     print("create checkpointing file at rank =", rank)
-    chk = DumbCheckpoint("dump_explicit", mode=FILE_CREATE, comm = ensemble.comm)
-    chk.store(un)
-    chk.store(etan)
-    chk.store(b)
+    chk = DumbCheckpoint(name, mode=FILE_CREATE, comm = ensemble.comm)
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
@@ -436,6 +450,14 @@ while t < tmax + 0.5*dt:
             hn.assign(hp)
 
         #dumping
+        if tnorm > normt - dt*0.5:
+            eta_norm.append(etanorm)
+            u_norm_Hdiv.append(unorm_Hdiv)
+            u_norm_L2.append(unorm_L2)
+            print('etanorm =', eta_norm)
+            print('unorm_Hdiv =', u_norm_Hdiv)
+            print('unorm_L2 =', u_norm_L2)
+            tnorm -= normt
         if tdump > dumpt - dt*0.5:
             #dump averaged results
             un.assign(U_u)
@@ -452,10 +474,6 @@ while t < tmax + 0.5*dt:
             eta_diff.assign(etan - eta_out)
             PVdiff.assign(PV- PVout)
             file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
-            #checkpointing
-            chk.store(un)
-            chk.store(etan)
-            chk.store(b)
             #calculate norms
             etanorm = errornorm(etan, eta_out)/norm(eta_out)
             unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
@@ -464,15 +482,14 @@ while t < tmax + 0.5*dt:
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
-
-        if tnorm > normt - dt*0.5:
-            eta_norm.append(etanorm)
-            u_norm_Hdiv.append(unorm_Hdiv)
-            u_norm_L2.append(unorm_L2)
-            print('etanorm =', eta_norm)
-            print('unorm_Hdiv =', u_norm_Hdiv)
-            print('unorm_L2 =', u_norm_L2)
-            tnorm -= normt
+            #checkpointing
+            chk.store(un)
+            chk.store(etan)
+            chk.store(urn)
+            chk.store(hn)
+            chk.write_attribute("/", "time", t)
+            chk.write_attribute("/", "tdump", tdump)
+            chk.write_attribute("/", "tnorm", tnorm)
 
 if rank == 0:
     chk.close()
@@ -480,18 +497,27 @@ if rank == 0:
     #check if dumbcheckpoint is working
     und = Function(V1)
     etand = Function(V2)
-    bd = Function(V2)
+    urnd = Function(V1)
+    hnd = Function(V2)
 
-    chkfile = DumbCheckpoint("dump_explicit", mode=FILE_READ, comm = ensemble.comm)
+    chkfile = DumbCheckpoint(name, mode=FILE_READ, comm = ensemble.comm)
     chkfile.load(und, name="Velocity")
     chkfile.load(etand, name="Elevation")
-    chkfile.load(bd, name="Topography")
-
+    chkfile.load(urnd, name="VelocityR")
+    chkfile.load(hnd, name="Depth")
+    t = chkfile.read_attribute("/", "time")
+    tdump = chkfile.read_attribute("/", "tdump")
+    tnorm = chkfile.read_attribute("/", "tnorm")
     valf = assemble(etan*dx)
     valg = assemble(etand*dx)
+    valh = assemble(hn*dx)
+    vald = assemble(hnd*dx)
 
     print("valf = ", valf)
     print("valg = ", valg)
     assert(valf == valg)
+    print("valh = ", valh)
+    print("vald = ", vald)
+    assert(valh == vald)
 
     chkfile.close()
