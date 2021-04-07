@@ -17,14 +17,14 @@ parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Defa
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
-parser.add_argument('--filter', type=bool, default=True, help='Use a filter in the averaging exponential')
-parser.add_argument('--filter2', type=bool, default=False, help='Use a filter for cheby2')
+parser.add_argument('--filter', action='store_true', help='Use a filter in the averaging exponential')
+parser.add_argument('--filter2', action='store_true', help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
 parser.add_argument('--filename', type=str, default='control')
-parser.add_argument('--pickup', type=bool, default=False, help='Pickup the result from the checkpoint.')
+parser.add_argument('--pickup', action='store_true', help='Pickup the result from the checkpoint.')
 args = parser.parse_known_args()
 args = args[0]
 filter = args.filter
@@ -33,6 +33,7 @@ filter_val = args.filter_val
 timestepping = args.timestepping
 asselin = args.asselin
 ref_level = args.ref_level
+filename = args.filename
 print(args)
 
 #ensemble communicator
@@ -113,7 +114,7 @@ print(args)
 
 #pickup the result
 if args.pickup:
-    chkfile = DumbCheckpoint(name, mode=FILE_READ, comm = ensemble.comm)
+    chkfile = DumbCheckpoint(filename, mode=FILE_READ, comm = ensemble.comm)
     un = Function(V1, name="Velocity")
     etan = Function(V2, name="Elevation")
     urn = Function(V1, name="VelocityR")
@@ -317,7 +318,6 @@ print("svals", svals)
 eta_norm = []
 u_norm_Hdiv = []
 u_norm_L2 = []
-name = args.filename
 if rank==0:
     #calculate norms at the initial state
     etanorm = errornorm(etan, eta_out)/norm(eta_out)
@@ -352,9 +352,9 @@ if rank==0:
 
     #write out initial fields
     mesh_ll = get_latlon_mesh(mesh)
-    file_sw = File(name+'_avg.pvd', comm=ensemble.comm)
-    file_r = File(name+'_serial.pvd', comm=ensemble.comm)
-    file_d = File(name+'_diff.pvd', comm=ensemble.comm)
+    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm)
+    file_r = File(filename+'_serial.pvd', comm=ensemble.comm)
+    file_d = File(filename+'_diff.pvd', comm=ensemble.comm)
     field_un = Function(
         functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
         val=un.topological)
@@ -392,7 +392,7 @@ if rank==0:
 
     #create checkpointing file
     print("create checkpointing file at rank =", rank)
-    chk = DumbCheckpoint(name, mode=FILE_CREATE, comm = ensemble.comm)
+    chk = DumbCheckpoint(filename, mode=FILE_CREATE, comm = ensemble.comm)
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
