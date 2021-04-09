@@ -325,12 +325,13 @@ if rank==0:
     unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
     unorm_L2 = errornorm(un, u_out)/norm(u_out)
     print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
-    eta_norm.append(etanorm)
-    u_norm_Hdiv.append(unorm_Hdiv)
-    u_norm_L2.append(unorm_L2)
     print('etanorm =', eta_norm)
     print('unorm_Hdiv =', u_norm_Hdiv)
     print('unorm_L2 =', u_norm_L2)
+    if not args.pickup:
+        eta_norm.append(etanorm)
+        u_norm_Hdiv.append(unorm_Hdiv)
+        u_norm_L2.append(unorm_L2)
 
     #setup PV solver
     PV = Function(Vf, name="PotentialVorticity")
