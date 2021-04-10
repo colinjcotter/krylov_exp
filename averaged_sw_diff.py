@@ -20,6 +20,7 @@ parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Comput
 parser.add_argument('--filter', action='store_true', help='Use a filter in the averaging exponential')
 parser.add_argument('--filter2', action='store_true', help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
+parser.add_argument('--filter_freq', action='store_true', help='Cut-off frequency for filter')
 parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
@@ -31,11 +32,16 @@ args = args[0]
 filter = args.filter
 filter2 = args.filter2
 filter_val = args.filter_val
+filter_freq = args.filter_freq
 timestepping = args.timestepping
 asselin = args.asselin
 ref_level = args.ref_level
 filename = args.filename
 print(args)
+
+if filter_freq and filter:
+    print("To many filters are on")
+    import sys; sys.exit()
 
 #ensemble communicator
 ensemble = Ensemble(COMM_WORLD, 1)
@@ -169,7 +175,7 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-8, L=L, filter=filter, filter_val=filter_val)
+                  ncheb, tol=1.0e-8, L=L, filter=filter, filter_val=filter_val, filter_freq=filter_freq)
 
 cheby2 = cheby_exp(OperatorSolver, operator_in, operator_out,
                    ncheb, tol=1.0e-8, L=L, filter=filter2, filter_val=filter_val)

@@ -7,7 +7,7 @@ print = PETSc.Sys.Print
 
 class cheby_exp(object):
     def __init__(self, operator_solver, operator_in, operator_out,
-                 ncheb, tol, L, filter=False, filter_val=0.75):
+                 ncheb, tol, L, filter=False, filter_val=0.75, filter_freq=False):
         """
         Class to apply the exponential of an operator
         using chebyshev approximation
@@ -33,8 +33,17 @@ class cheby_exp(object):
         x = L*np.cos(t1)
         fvals = np.exp(1j*x)
 
-        if filter:
-            fvals /= (1 + (x/filter_val/L)**2)**4
+        #Set cut-off frequency
+        eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
+        fL = eigs[0]*60*60
+
+        print("L =", L)
+        if filter_freq:
+            print("filter_freq is on. L =", fL)
+            fvals /= (1 + (x/fL)**2)**4
+        elif filter:
+            print("filter is on. L =", filter_val*L)
+            fvals /= (1 + (x/(filter_val*L))**2)**4
 
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
         FourierCoeffs = fftpack.fft(valsUnitDisc)/ncheb
