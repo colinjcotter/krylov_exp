@@ -490,14 +490,15 @@ while t < tmax + 0.5*dt:
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
-            #checkpointing
-            chk.store(un)
-            chk.store(etan)
-            chk.store(urn)
-            chk.store(hn)
-            chk.write_attribute("/", "time", t)
-            chk.write_attribute("/", "tdump", tdump)
-            chk.write_attribute("/", "tnorm", tnorm)
+
+        #checkpointing
+        chk.store(un)
+        chk.store(etan)
+        chk.store(urn)
+        chk.store(hn)
+        chk.write_attribute("/", "time", t)
+        chk.write_attribute("/", "tdump", tdump)
+        chk.write_attribute("/", "tnorm", tnorm)
 
 if rank == 0:
     chk.close()
