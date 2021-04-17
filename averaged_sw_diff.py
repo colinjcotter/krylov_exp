@@ -133,6 +133,15 @@ if args.pickup:
     t = chkfile.read_attribute("/", "time")
     tdump = chkfile.read_attribute("/", "tdump")
     tnorm = chkfile.read_attribute("/", "tnorm")
+    eta_norm_ar = chkfile.read_attribute("/", "eta_norm")
+    u_norm_Hdiv_ar = chkfile.read_attribute("/", "u_norm_Hdiv")
+    u_norm_L2_ar = chkfile.read_attribute("/", "u_norm_L2")
+    eta_norm = eta_norm_ar.tolist()
+    u_norm_Hdiv = u_norm_Hdiv_ar.tolist()
+    u_norm_L2 = u_norm_L2_ar.tolist()
+    print("eta_norm = ", eta_norm)
+    print("u_norm_Hdiv = ", u_norm_Hdiv)
+    print("u_norm_L2 = ", u_norm_L2)
 else:
     un = Function(V1, name="Velocity").project(u_expr)
     etan = Function(V2, name="Elevation").interpolate(eta_expr)
@@ -322,22 +331,25 @@ wt = weights[rank]
 print(wt, "weight", expt)
 print("svals", svals)
 
-eta_norm = []
-u_norm_Hdiv = []
-u_norm_L2 = []
+etanorm = 0.
+unorm_Hdiv = 0.
+unorm_L2 = 0.
 if rank==0:
     #calculate norms at the initial state
     etanorm = errornorm(etan, eta_out)/norm(eta_out)
     unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
     unorm_L2 = errornorm(un, u_out)/norm(u_out)
     print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
-    print('etanorm =', eta_norm)
-    print('unorm_Hdiv =', u_norm_Hdiv)
-    print('unorm_L2 =', u_norm_L2)
     if not args.pickup:
+        eta_norm = []
+        u_norm_Hdiv = []
+        u_norm_L2 = []
         eta_norm.append(etanorm)
         u_norm_Hdiv.append(unorm_Hdiv)
         u_norm_L2.append(unorm_L2)
+    print('etanorm =', eta_norm)
+    print('unorm_Hdiv =', u_norm_Hdiv)
+    print('unorm_L2 =', u_norm_L2)
 
     #setup PV solver
     PV = Function(Vf, name="PotentialVorticity")
@@ -360,9 +372,9 @@ if rank==0:
 
     #write out initial fields
     mesh_ll = get_latlon_mesh(mesh)
-    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm)
-    file_r = File(filename+'_serial.pvd', comm=ensemble.comm)
-    file_d = File(filename+'_diff.pvd', comm=ensemble.comm)
+    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm, mode="a")
+    file_r = File(filename+'_serial.pvd', comm=ensemble.comm, mode="a")
+    file_d = File(filename+'_diff.pvd', comm=ensemble.comm, mode="a")
     field_un = Function(
         functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
         val=un.topological)
@@ -404,7 +416,7 @@ if rank==0:
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
-while t < tmax + 0.5*dt:
+while t < tmax - 0.5*dt:
     print(t)
     t += dt
     tdump += dt
@@ -458,14 +470,6 @@ while t < tmax + 0.5*dt:
             hn.assign(hp)
 
         #dumping
-        if tnorm > normt - dt*0.5:
-            eta_norm.append(etanorm)
-            u_norm_Hdiv.append(unorm_Hdiv)
-            u_norm_L2.append(unorm_L2)
-            print('etanorm =', eta_norm)
-            print('unorm_Hdiv =', u_norm_Hdiv)
-            print('unorm_L2 =', u_norm_L2)
-            tnorm -= normt
         if tdump > dumpt - dt*0.5:
             #dump averaged results
             un.assign(U_u)
@@ -491,6 +495,31 @@ while t < tmax + 0.5*dt:
             print("dumped at t =", t)
             tdump -= dumpt
 
+            if tnorm > normt - dt*0.5:
+                eta_norm.append(etanorm)
+                u_norm_Hdiv.append(unorm_Hdiv)
+                u_norm_L2.append(unorm_L2)
+                print('etanorm =', eta_norm)
+                print('unorm_Hdiv =', u_norm_Hdiv)
+                print('unorm_L2 =', u_norm_L2)
+                tnorm -= normt
+
+        elif tnorm > normt - dt*0.5:
+            un.assign(U_u)
+            etan.assign(U_eta)
+            u_out.assign(urn)
+            eta_out.assign(hn + b - H)
+            etanorm = errornorm(etan, eta_out)/norm(eta_out)
+            unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
+            unorm_L2 = errornorm(un, u_out)/norm(u_out)
+            eta_norm.append(etanorm)
+            u_norm_Hdiv.append(unorm_Hdiv)
+            u_norm_L2.append(unorm_L2)
+            print('etanorm =', eta_norm)
+            print('unorm_Hdiv =', u_norm_Hdiv)
+            print('unorm_L2 =', u_norm_L2)
+            tnorm -= normt
+
         #checkpointing
         chk.store(un)
         chk.store(etan)
@@ -499,6 +528,9 @@ while t < tmax + 0.5*dt:
         chk.write_attribute("/", "time", t)
         chk.write_attribute("/", "tdump", tdump)
         chk.write_attribute("/", "tnorm", tnorm)
+        chk.write_attribute("/", "eta_norm", eta_norm)
+        chk.write_attribute("/", "u_norm_Hdiv", u_norm_Hdiv)
+        chk.write_attribute("/", "u_norm_L2", u_norm_L2)
 
 if rank == 0:
     chk.close()
@@ -517,10 +549,20 @@ if rank == 0:
     t = chkfile.read_attribute("/", "time")
     tdump = chkfile.read_attribute("/", "tdump")
     tnorm = chkfile.read_attribute("/", "tnorm")
+    eta_norm = chkfile.read_attribute("/", "eta_norm")
+    u_norm_Hdiv = chkfile.read_attribute("/", "u_norm_Hdiv")
+    u_norm_L2 = chkfile.read_attribute("/", "u_norm_L2")
     valf = assemble(etan*dx)
     valg = assemble(etand*dx)
     valh = assemble(hn*dx)
     vald = assemble(hnd*dx)
+
+    print("t = ", t)
+    print("tdump = ", tdump)
+    print("tnorm = ", tnorm)
+    print("eta_norm = ", eta_norm)
+    print("u_norm_Hdiv = ", u_norm_Hdiv)
+    print("u_norm_L2 = ", u_norm_L2)
 
     print("valf = ", valf)
     print("valg = ", valg)
