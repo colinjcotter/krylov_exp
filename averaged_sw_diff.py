@@ -26,7 +26,6 @@ parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', '
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
 parser.add_argument('--filename', type=str, default='control')
 parser.add_argument('--pickup', action='store_true', help='Pickup the result from the checkpoint.')
-parser.add_argument('--pickupfrom', type=str, default='chkpt')
 args = parser.parse_known_args()
 args = args[0]
 filter = args.filter
@@ -121,7 +120,7 @@ print(args)
 
 #pickup the result
 if args.pickup:
-    chkfile = DumbCheckpoint(args.pickupfrom, mode=FILE_READ, comm = ensemble.comm)
+    chkfile = DumbCheckpoint(filename, mode=FILE_READ, comm = ensemble.comm)
     un = Function(V1, name="Velocity")
     etan = Function(V2, name="Elevation")
     urn = Function(V1, name="VelocityR")
