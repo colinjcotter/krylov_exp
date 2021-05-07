@@ -61,8 +61,8 @@ def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V1, V2, V3, V, W,
     U3.assign(V + V3)
 
     #Average the nonlinearity
-    cheby2.apply(V2, U1, dt/2)
-    cheby2.apply(V3, U2, dt/2)
+    U1.assign(V2 + V3)
+    cheby2.apply(U1, U2, dt/2)
 
     cheby2.apply(U3, DU, dt/2)
     cheby.apply(DU, USlow_in, expt)
@@ -71,10 +71,10 @@ def rk4(U, USlow_in, USlow_out, DU, U1, U2, U3, V1, V2, V3, V, W,
     DU *= wt
     ensemble.allreduce(DU, U3)
 
-    cheby2.apply(V1, DU, dt)
+    cheby2.apply(V1, U1, dt)
     cheby2.apply(U, V, dt)
 
-    U.assign(V + 1/6*DU + 1/3*U1 + 1/3*U2 + 1/6*U3)
+    U.assign(V + 1/6*U1 + 1/3*U2 + 1/6*U3)
 
 
 def heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
