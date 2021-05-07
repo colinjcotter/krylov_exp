@@ -11,6 +11,7 @@ import argparse
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
+parser.add_argument('--space_parallel', type=int, default=1, help='Default 1.')
 parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
 parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Default 1.')
@@ -36,6 +37,7 @@ timestepping = args.timestepping
 asselin = args.asselin
 ref_level = args.ref_level
 filename = args.filename
+space_parallel = args.space_parallel
 print(args)
 
 if filter_freq and filter:
@@ -43,7 +45,7 @@ if filter_freq and filter:
     import sys; sys.exit()
 
 #ensemble communicator
-ensemble = Ensemble(COMM_WORLD, 1)
+ensemble = Ensemble(COMM_WORLD, space_parallel)
 
 #parameters
 R0 = 6371220.
@@ -113,7 +115,7 @@ tnorm = 0.
 
 #print out settings
 print = PETSc.Sys.Print
-assert Mbar==COMM_WORLD.size, str(Mbar)+' '+str(COMM_WORLD.size)
+assert Mbar*space_parallel==COMM_WORLD.size, str(Mbar)+' '+str(COMM_WORLD.size)
 print('averaging window', rho*dt, 'sample width', rho*dt/Mbar)
 print('Mbar', Mbar, 'samples per min time period', min_time_period/(rho*dt/Mbar))
 print(args)
@@ -141,6 +143,7 @@ if args.pickup:
     print("eta_norm = ", eta_norm)
     print("u_norm_Hdiv = ", u_norm_Hdiv)
     print("u_norm_L2 = ", u_norm_L2)
+    chkfile.close()
 else:
     un = Function(V1, name="Velocity").project(u_expr)
     etan = Function(V2, name="Elevation").interpolate(eta_expr)
@@ -562,6 +565,13 @@ if rank == 0:
     print("eta_norm = ", eta_norm)
     print("u_norm_Hdiv = ", u_norm_Hdiv)
     print("u_norm_L2 = ", u_norm_L2)
+
+    ud_out = Function(V1).assign(urnd)
+    etad_out = Function(V2).assign(hnd + b - H)
+    etanorm = errornorm(etand, etad_out)/norm(etad_out)
+    unorm_Hdiv = errornorm(und, ud_out, norm_type="Hdiv")/norm(ud_out, norm_type="Hdiv")
+    unorm_L2 = errornorm(und, ud_out)/norm(ud_out)
+    print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
 
     print("valf = ", valf)
     print("valg = ", valg)
