@@ -14,6 +14,7 @@ parser.add_argument('--ref_level', type=int, default=3, help='Refinement level o
 parser.add_argument('--space_parallel', type=int, default=1, help='Default 1.')
 parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
+parser.add_argument('--normt', type=float, default=24, help='Collect norms every normt (in hours). Default 24.')
 parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Default 1.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
@@ -109,7 +110,7 @@ svals -= 0.5
 t = 0.
 tmax = 60.*60.*args.tmax
 dumpt = args.dumpt*60.*60.
-normt = 24.*60.*60.
+normt = args.normt*60.*60.
 tdump = 0.
 tnorm = 0.
 
@@ -471,16 +472,22 @@ while t < tmax - 0.5*dt:
             urn.assign(up)
             hn.assign(hp)
 
-        #dumping
+        #calculate norms
+        un.assign(U_u)
+        etan.assign(U_eta)
+        u_out.assign(urn)
+        eta_out.assign(hn + b - H)
+        etanorm = errornorm(etan, eta_out)/norm(eta_out)
+        unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
+        unorm_L2 = errornorm(un, u_out)/norm(u_out)
+        print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
+
+        #dumping results
         if tdump > dumpt - dt*0.5:
             #dump averaged results
-            un.assign(U_u)
-            etan.assign(U_eta)
             PVsolver.solve()
             file_sw.write(field_un, field_etan, field_PV, field_b)
             #dump non averaged results
-            u_out.assign(urn)
-            eta_out.assign(hn + b - H)
             PVoutsolver.solve()
             file_r.write(field_uout, field_etaout, field_PVout, field_b)
             #dump differences
@@ -488,32 +495,12 @@ while t < tmax - 0.5*dt:
             eta_diff.assign(etan - eta_out)
             PVdiff.assign(PV- PVout)
             file_d.write(field_udiff, field_etadiff, field_PVdiff, field_b)
-            #calculate norms
-            etanorm = errornorm(etan, eta_out)/norm(eta_out)
-            unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
-            unorm_L2 = errornorm(un, u_out)/norm(u_out)
-            print('etanorm', etanorm, 'unorm_Hdiv', unorm_Hdiv, 'unorm_L2', unorm_L2)
             #update dumpt
             print("dumped at t =", t)
             tdump -= dumpt
 
-            if tnorm > normt - dt*0.5:
-                eta_norm.append(etanorm)
-                u_norm_Hdiv.append(unorm_Hdiv)
-                u_norm_L2.append(unorm_L2)
-                print('etanorm =', eta_norm)
-                print('unorm_Hdiv =', u_norm_Hdiv)
-                print('unorm_L2 =', u_norm_L2)
-                tnorm -= normt
-
-        elif tnorm > normt - dt*0.5:
-            un.assign(U_u)
-            etan.assign(U_eta)
-            u_out.assign(urn)
-            eta_out.assign(hn + b - H)
-            etanorm = errornorm(etan, eta_out)/norm(eta_out)
-            unorm_Hdiv = errornorm(un, u_out, norm_type="Hdiv")/norm(u_out, norm_type="Hdiv")
-            unorm_L2 = errornorm(un, u_out)/norm(u_out)
+        #append norms to array every normt
+        if tnorm > normt - dt*0.5:
             eta_norm.append(etanorm)
             u_norm_Hdiv.append(unorm_Hdiv)
             u_norm_L2.append(unorm_L2)
@@ -522,7 +509,7 @@ while t < tmax - 0.5*dt:
             print('unorm_L2 =', u_norm_L2)
             tnorm -= normt
 
-        #checkpointing
+        #checkpointing every time step
         chk.store(un)
         chk.store(etan)
         chk.store(urn)
