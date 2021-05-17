@@ -15,7 +15,8 @@ parser.add_argument('--space_parallel', type=int, default=1, help='Default 1.')
 parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
 parser.add_argument('--normt', type=float, default=24, help='Collect norms every normt (in hours). Default 24.')
-parser.add_argument('--dt', type=float, default=1, help='Timestep in hours. Default 1.')
+parser.add_argument('--dt', type=float, default=1, help='Timestep for the averaged model in hours. Default 1.')
+parser.add_argument('--dts', type=float, default=0.025, help='Timestep for the standard model in hours. Default 0.025.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
@@ -90,6 +91,7 @@ eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
 dt = 60*60*hours
+dts = 60*60*args.dts
 rho = args.rho #averaging window is rho*dt
 L = eigs[ref_level-3]*dt*rho
 ppp = args.ppp #points per (minimum) time period
@@ -236,7 +238,6 @@ SlowSolver = LinearVariationalSolver(SlowProb,
 ##############################################################################
 # Set up depth advection solver (DG upwinded scheme)
 ##############################################################################
-dts = 180
 up = Function(V1)
 hp = Function(V2)
 hps = Function(V2)
@@ -418,7 +419,7 @@ if rank==0:
     chk = DumbCheckpoint(filename, mode=FILE_CREATE, comm = ensemble.comm)
 
 #start time loop
-print('tmax', tmax, 'dt', dt)
+print('tmax', tmax, 'dt', dt, 'dts', dts)
 while t < tmax - 0.5*dt:
     print(t)
     t += dt
