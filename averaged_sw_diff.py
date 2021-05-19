@@ -10,13 +10,13 @@ import argparse
 
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
-parser.add_argument('--ref_level', type=int, default=3, help='Refinement level of icosahedral grid. Default 3.')
-parser.add_argument('--space_parallel', type=int, default=1, help='Default 1.')
+parser.add_argument('--ref_level', type=int, default=4, help='Refinement level of icosahedral grid. Default 4.')
+parser.add_argument('--space_parallel', type=int, default=4, help='Default 4.')
 parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
-parser.add_argument('--normt', type=float, default=24, help='Collect norms every normt (in hours). Default 24.')
-parser.add_argument('--dt', type=float, default=1, help='Timestep for the averaged model in hours. Default 1.')
-parser.add_argument('--dts', type=float, default=0.025, help='Timestep for the standard model in hours. Default 0.025.')
+parser.add_argument('--normt', type=float, default=6, help='Collect norms every normt (in hours). Default 6.')
+parser.add_argument('--dt', type=float, default=0.5, help='Timestep for the averaged model in hours. Default 0.5.')
+parser.add_argument('--dts', type=float, default=0.0125, help='Timestep for the standard model in hours. Default 0.0125.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--linear', action='store_false', dest='nonlinear', help='Run linear model if present, otherwise run nonlinear model')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
@@ -24,7 +24,7 @@ parser.add_argument('--filter', action='store_true', help='Use a filter in the a
 parser.add_argument('--filter2', action='store_true', help='Use a filter for cheby2')
 parser.add_argument('--filter_val', type=float, default=0.75, help='Cut-off for filter')
 parser.add_argument('--filter_freq', action='store_true', help='Cut-off frequency for filter')
-parser.add_argument('--ppp', type=float, default=3, help='Points per time-period for averaging.')
+parser.add_argument('--ppp', type=float, default=4, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default SSPRK3.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient. Default 0.3.')
 parser.add_argument('--filename', type=str, default='control')
@@ -510,19 +510,18 @@ while t < tmax - 0.5*dt:
             print('unorm_L2 =', u_norm_L2)
             tnorm -= normt
 
-        #checkpointing every time step
-        chk.store(un)
-        chk.store(etan)
-        chk.store(urn)
-        chk.store(hn)
-        chk.write_attribute("/", "time", t)
-        chk.write_attribute("/", "tdump", tdump)
-        chk.write_attribute("/", "tnorm", tnorm)
-        chk.write_attribute("/", "eta_norm", eta_norm)
-        chk.write_attribute("/", "u_norm_Hdiv", u_norm_Hdiv)
-        chk.write_attribute("/", "u_norm_L2", u_norm_L2)
-
 if rank == 0:
+    #checkpointing every time step
+    chk.store(un)
+    chk.store(etan)
+    chk.store(urn)
+    chk.store(hn)
+    chk.write_attribute("/", "time", t)
+    chk.write_attribute("/", "tdump", tdump)
+    chk.write_attribute("/", "tnorm", tnorm)
+    chk.write_attribute("/", "eta_norm", eta_norm)
+    chk.write_attribute("/", "u_norm_Hdiv", u_norm_Hdiv)
+    chk.write_attribute("/", "u_norm_L2", u_norm_L2)
     chk.close()
 
     #check if dumbcheckpoint is working
