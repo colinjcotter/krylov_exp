@@ -77,7 +77,6 @@ eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
 dt = 60*60*hours
-dts = args.dts
 rho = args.rho #averaging window is rho*dt
 L = eigs[ref_level-3]*dt*rho
 ppp = args.ppp #points per (minimum) time period
@@ -124,43 +123,6 @@ else:
     un = Function(V1, name="Velocity").project(u_expr)
     etan = Function(V2, name="Elevation").interpolate(eta_expr)
 
-#set weights
-rank = ensemble.ensemble_comm.rank
-expt = rho*dt*svals[rank]
-wt = weights[rank]
-print(wt, "weight", expt)
-print("svals", svals)
-
-if rank==0:
-    #setup PV solver
-    PV = Function(Vf, name="PotentialVorticity")
-    gamma = TestFunction(Vf)
-    q = TrialFunction(Vf)
-    D = etan + H - b
-    a = q*gamma*D*dx
-    L = (- inner(perp(grad(gamma)), un))*dx + gamma*f*dx
-    PVproblem = LinearVariationalProblem(a, L, PV)
-    PVsolver = LinearVariationalSolver(PVproblem, solver_parameters={"ksp_type": "cg"})
-    PVsolver.solve()
-
-    #write out initial fields
-    mesh_ll = get_latlon_mesh(mesh)
-    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm, mode="a")
-    field_un = Function(
-        functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
-        val=un.topological)
-    field_etan = Function(
-        functionspaceimpl.WithGeometry(etan.function_space(), mesh_ll),
-        val=etan.topological)
-    field_PV = Function(
-        functionspaceimpl.WithGeometry(PV.function_space(), mesh_ll),
-        val=PV.topological)
-    field_b = Function(
-        functionspaceimpl.WithGeometry(b.function_space(), mesh_ll),
-        val=b.topological)
-    if not args.pickup:
-        file_sw.write(field_un, field_etan, field_PV, field_b)
-
 ##############################################################################
 # Set up the exponential operator
 ##############################################################################
@@ -196,10 +158,10 @@ OperatorSolver = LinearVariationalSolver(Prob, solver_parameters=params)
 ncheb = 10000
 
 cheby = cheby_exp(OperatorSolver, operator_in, operator_out,
-                  ncheb, tol=1.0e-8, L=L, filter=filter, filter_val=filter_val, filter_freq=filter_freq)
+                  ncheb, tol=1.0e-8, L=L)
 
 cheby2 = cheby_exp(OperatorSolver, operator_in, operator_out,
-                   ncheb, tol=1.0e-8, L=L, filter=filter2, filter_val=filter_val)
+                   ncheb, tol=1.0e-8, L=L)
 
 ##############################################################################
 # Set up solvers for the slow part
@@ -258,6 +220,43 @@ V = Function(W)
 U_u, U_eta = U.split()
 U_u.assign(un)
 U_eta.assign(etan)
+
+#set weights
+rank = ensemble.ensemble_comm.rank
+expt = rho*dt*svals[rank]
+wt = weights[rank]
+print(wt, "weight", expt)
+print("svals", svals)
+
+if rank==0:
+    #setup PV solver
+    PV = Function(Vf, name="PotentialVorticity")
+    gamma = TestFunction(Vf)
+    q = TrialFunction(Vf)
+    D = etan + H - b
+    a = q*gamma*D*dx
+    L = (- inner(perp(grad(gamma)), un))*dx + gamma*f*dx
+    PVproblem = LinearVariationalProblem(a, L, PV)
+    PVsolver = LinearVariationalSolver(PVproblem, solver_parameters={"ksp_type": "cg"})
+    PVsolver.solve()
+
+    #write out initial fields
+    mesh_ll = get_latlon_mesh(mesh)
+    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm, mode="a")
+    field_un = Function(
+        functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
+        val=un.topological)
+    field_etan = Function(
+        functionspaceimpl.WithGeometry(etan.function_space(), mesh_ll),
+        val=etan.topological)
+    field_PV = Function(
+        functionspaceimpl.WithGeometry(PV.function_space(), mesh_ll),
+        val=PV.topological)
+    field_b = Function(
+        functionspaceimpl.WithGeometry(b.function_space(), mesh_ll),
+        val=b.topological)
+    if not args.pickup:
+        file_sw.write(field_un, field_etan, field_PV, field_b)
 
 #start time loop
 print('tmax', tmax, 'dt', dt)
