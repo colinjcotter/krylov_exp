@@ -12,7 +12,7 @@ import argparse
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=4, help='Refinement level of icosahedral grid. Default 4.')
 parser.add_argument('--space_parallel', type=int, default=4, help='Default 4.')
-parser.add_argument('--tmax', type=float, default=1200, help='Final time in hours. Default 24x50=1200.')
+parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
 parser.add_argument('--checkt', type=float, default=6, help='Create checkpointing file every checkt hours. Default 6.')
 parser.add_argument('--dt', type=float, default=0.5, help='Timestep for the averaged model in hours. Default 0.5.')
@@ -21,9 +21,9 @@ parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Comput
 parser.add_argument('--ppp', type=float, default=4, help='Points per time-period for averaging.')
 parser.add_argument('--timestepping', type=str, default='rk4', choices=['rk2', 'rk4', 'heuns', 'ssprk3', 'leapfrog'], help='Choose a time steeping method. Default rk4.')
 parser.add_argument('--asselin', type=float, default=0.3, help='Asselin Filter coefficient for leapfrog. Default 0.3.')
-parser.add_argument('--filename', type=str, default='control')
+parser.add_argument('--filename', type=str, default='explicit')
 parser.add_argument('--pickup', action='store_true', help='Pickup the result from the checkpoint.')
-parser.add_argument('--pickup_from', type=str, default='standard')
+parser.add_argument('--pickup_from', type=str, default='explicit')
 args = parser.parse_known_args()
 args = args[0]
 timestepping = args.timestepping
@@ -110,7 +110,7 @@ print(args)
 
 #pickup the result
 if args.pickup:
-    chkfile = DumbCheckpoint(args.pickup_from, mode=FILE_READ, comm = ensemble.comm)
+    chkfile = DumbCheckpoint(args.pickup_from, mode=FILE_READ, comm=ensemble.comm)
     un = Function(V1, name="Velocity")
     etan = Function(V2, name="Elevation")
     chkfile.load(un, name="Velocity")
@@ -122,6 +122,13 @@ if args.pickup:
 else:
     un = Function(V1, name="Velocity").project(u_expr)
     etan = Function(V2, name="Elevation").interpolate(eta_expr)
+
+#calculate norms for debug
+uini = Function(V1, name="Velocity0").project(u_expr)
+etaini = Function(V2, name="Elevation0").interpolate(eta_expr)
+etanorm = errornorm(etan, etaini)/norm(etaini)
+unorm = errornorm(un, uini, norm_type="Hdiv")/norm(uini, norm_type="Hdiv")
+print('etanorm', etanorm, 'unorm', unorm)
 
 ##############################################################################
 # Set up the exponential operator
@@ -242,7 +249,7 @@ if rank==0:
 
     #write out initial fields
     mesh_ll = get_latlon_mesh(mesh)
-    file_sw = File(filename+'_avg.pvd', comm=ensemble.comm, mode="a")
+    file_sw = File(filename+'.pvd', comm=ensemble.comm, mode="a")
     field_un = Function(
         functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
         val=un.topological)
@@ -289,7 +296,11 @@ while t < tmax - 0.5*dt:
             heuns(U, USlow_in, USlow_out, DU, U1, U2, W,
                   expt, ensemble, cheby, cheby2, SlowSolver, wt, dt)
 
+
     if rank == 0:
+        un.assign(U_u)
+        etan.assign(U_eta)
+
         #dumping results
         if tdump > dumpt - dt*0.5:
             #dump averaged results
@@ -301,15 +312,20 @@ while t < tmax - 0.5*dt:
 
         #create checkpointing file every tcheck hours
         if tcheck > checkt - dt*0.5:
-            print("checkpointing at t =", t)
             thours = int(t/3600)
-            chk = DumbCheckpoint(filename+"_"+str(thours)+"h", mode=FILE_CREATE)
+            chk = DumbCheckpoint(filename+"_"+str(thours)+"h", mode=FILE_CREATE, comm = ensemble.comm)
+            tcheck -= checkt
             chk.store(un)
             chk.store(etan)
             chk.write_attribute("/", "time", t)
             chk.write_attribute("/", "tdump", tdump)
             chk.write_attribute("/", "tcheck", tcheck)
             chk.close()
-            tcheck -= checkt
+            print("checkpointed at t =", t)
 
-print("Completed calculation at t =", t)
+            #calculate norms for debug
+            etanorm = errornorm(etan, etaini)/norm(etaini)
+            unorm = errornorm(un, uini, norm_type="Hdiv")/norm(uini, norm_type="Hdiv")
+            print('etanorm', etanorm, 'unorm', unorm)
+
+print("Completed calculation at t = ", t/3600, "hours")

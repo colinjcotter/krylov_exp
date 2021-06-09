@@ -2,13 +2,15 @@ from firedrake import *
 from math import pi
 from math import ceil
 from latlon import *
+from firedrake.petsc import PETSc
 import numpy as np
 import argparse
+print = PETSc.Sys.Print
 
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
 parser.add_argument('--ref_level', type=int, default=4, help='Refinement level of icosahedral grid. Default 4.')
-parser.add_argument('--tmax', type=float, default=120, help='Final time in hours. Default 24x5=120.')
+parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
 parser.add_argument('--checkt', type=float, default=6, help='Create checkpointing file every checkt hours. Default 6.')
 parser.add_argument('--dt', type=float, default=45, help='Timestep for the standard model in seconds. Default 45.')
@@ -44,7 +46,8 @@ f = Function(Vf).interpolate(f_expr)    # Coriolis frequency
 u_0 = 20.0  # maximum amplitude of the zonal wind [m/s]
 u_max = Constant(u_0)
 u_expr = as_vector([-u_max*x[1]/R, u_max*x[0]/R, 0.0])
-h_expr = H-((R*Omega*u_max+u_max*u_max/2.0)*(x[2]*x[2]/(R*R)))/g
+eta_expr = -((R*Omega*u_max+u_max*u_max/2.0)*(x[2]*x[2]/(R*R)))/g
+h_expr = eta_expr + H
 
 #topography (D = H + eta - b)
 rl = pi/9.0
@@ -80,9 +83,16 @@ if args.pickup:
     chkfile.close()
 else:
     un = Function(V1, name="Velocity").project(u_expr)
+    etan = Function(V2, name="Elevation").interpolate(eta_expr)
     hn = Function(V2, name="Depth").interpolate(h_expr)
     hn -= b
-    etan = Function(V2, name="Elevation").assign(hn + b - H)
+
+#calculate norms for debug
+uini = Function(V1, name="Velocity0").project(u_expr)
+etaini = Function(V2, name="Elevation0").interpolate(eta_expr)
+etanorm = errornorm(etan, etaini)/norm(etaini)
+unorm = errornorm(un, uini, norm_type="Hdiv")/norm(uini, norm_type="Hdiv")
+print('etanorm', etanorm, 'unorm', unorm)
 
 #setup PV solver
 PV = Function(Vf, name="PotentialVorticity")
@@ -97,7 +107,7 @@ PVsolver.solve()
 
 #write out initial fields
 mesh_ll = get_latlon_mesh(mesh)
-file_sw = File(filename+'_sw.pvd', mode="a")
+file_sw = File(filename+'.pvd', mode="a")
 field_un = Function(
     functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
     val=un.topological)
@@ -208,6 +218,7 @@ while t < tmax - 0.5*dt:
     #update fields for next time step
     un.assign(up)
     hn.assign(hp)
+    etan.assign(hn + b - H)
 
     #dumping results
     if tdump > dumpt - dt*0.5:
@@ -220,15 +231,20 @@ while t < tmax - 0.5*dt:
 
     #create checkpointing file every tcheck hours
     if tcheck > checkt - dt*0.5:
-        print("checkpointing at t =", t)
         thours = int(t/3600)
         chk = DumbCheckpoint(filename+"_"+str(thours)+"h", mode=FILE_CREATE)
+        tcheck -= checkt
         chk.store(un)
         chk.store(hn)
         chk.write_attribute("/", "time", t)
         chk.write_attribute("/", "tdump", tdump)
         chk.write_attribute("/", "tcheck", tcheck)
         chk.close()
-        tcheck -= checkt
+        print("checkpointed at t =", t)
 
-print("Completed calculation at t =", t)
+        #calculate norms for debug
+        etanorm = errornorm(etan, etaini)/norm(etaini)
+        unorm = errornorm(un, uini, norm_type="Hdiv")/norm(uini, norm_type="Hdiv")
+        print('etanorm', etanorm, 'unorm', unorm)
+
+print("Completed calculation at t = ", t/3600, "hours")
