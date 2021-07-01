@@ -1,4 +1,4 @@
-#Use implicit midpoint with fixed point on advection velocity 
+#Use implicit midpoint with fixed point on advection velocity
 
 #get command arguments
 import argparse
@@ -27,7 +27,7 @@ theta = args.theta
 ref_level = args.ref_level
 eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
 from math import pi
-min_time_period = 2*pi/eigs[ref_level-3] 
+min_time_period = 2*pi/eigs[ref_level-3]
 hours = args.dt
 dt = 60*60*hours
 rho = args.rho #averaging window is rho*dt
@@ -72,7 +72,7 @@ cx, cy, cz = SpatialCoordinate(mesh)
 
 outward_normals = CellNormal(mesh)
 perp = lambda u: cross(outward_normals, u)
-    
+
 V1 = FunctionSpace(mesh, "BDM", 2)
 V2 = FunctionSpace(mesh, "DG", 1)
 W = MixedFunctionSpace((V1, V2))
@@ -130,50 +130,43 @@ USlow_out = Function(W) #value at RK stage
 Unl = Function(W) #outer loop for slow solver
 
 u0, eta0 = split(USlow_in)
-u1, eta1 = TrialFunctions(W)
-unl, etanl = split(Unl)
+u1, eta1 = split(USlow_out)
 uh = theta*u1 + (1-theta)*u0
 etah = theta*eta1 + (1-theta)*eta0
 
 #RHS for Forward Euler step
 gradperp = lambda f: perp(grad(f))
 n = FacetNormal(mesh)
-Upwind = 0.5 * (sign(dot(unl, n)) + 1)
+Upwind = 0.5 * (sign(dot(uh, n)) + 1)
 both = lambda u: 2*avg(u)
-K = 0.5*inner(unl, u0)
-uup = 0.5 * (dot(unl, n) + abs(dot(unl, n)))
+K = 0.5*inner(uh, u0)
+uup = 0.5 * (dot(uh, n) + abs(dot(uh, n)))
 
 ncycles = args.ncycles
 dT = Constant(dt/ncycles)
 
 eqn = (
     inner(v, u1-u0)*dx + phi*(eta1-eta0)*dx
-    + dT*inner(perp(grad(inner(v, perp(unl)))), uh)*dx
-    - dT*inner(both(perp(n)*inner(v, perp(unl))),
+    + dT*inner(perp(grad(inner(v, perp(uh)))), uh)*dx
+    - dT*inner(both(perp(n)*inner(v, perp(uh))),
                both(Upwind*uh))*dS
     + dT*div(v)*K*dx
-    + dT*inner(grad(phi), unl*(etah-b))*dx
+    + dT*inner(grad(phi), uh*(etah-b))*dx
     - dT*jump(phi)*(uup('+')*(etah('+')-b('+'))
                     - uup('-')*(etah('-') - b('-')))*dS
 )
 #with topography, D = H + eta - b
 
-
-impparams = {
-    'ksp_type': 'preonly',
-    'pc_type': 'fieldsplit',
-    'fieldsplit_0_ksp_type':'cg',
-    'fieldsplit_0_pc_type':'bjacobi',
-    'fieldsplit_0_sub_pc_type':'ilu',
-    'fieldsplit_1_ksp_type':'cg',
-    'fieldsplit_1_pc_type':'bjacobi',
-    'fieldsplit_1_sub_pc_type':'ilu'
+params = {
+    "ksp_type": "preonly",
+    "mat_type":"aij",
+    "pc_type": "lu",
+    "pc_factor_mat_solver_type": "mumps"
 }
 
-SlowProb = LinearVariationalProblem(lhs(eqn), rhs(eqn), USlow_out,
-                                    constant_jacobian=False)
-SlowSolver = LinearVariationalSolver(SlowProb,
-                                     solver_parameters = impparams)
+SlowProb = NonlinearVariationalProblem(eqn, USlow_out)
+SlowSolver = NonlinearVariationalSolver(SlowProb,
+                                     solver_parameters = params)
 
 t = 0.
 tmax = 60.*60.*args.tmax
@@ -244,17 +237,16 @@ while t < tmax + 0.5*dt:
         # U_{n+1} = \exp(tL)(U_n + \int \rho\exp(-sL)\Delta\Phi(\exp(sL)U_n))ds
 
         #apply forward transformation and put result in V, storing copy in eU
-        cheby.apply(U, eU, expt)
+        cheby2.apply(U, V, dt)
+        cheby.apply(V, eU, expt)
         V.assign(eU)
-        
+
         #apply forward slow step to V
         #using semi-implicit stepping
 
         for i in range(ncycles):
             USlow_in.assign(V)
-            Unl.assign(V)
-            SlowSolver.solve()
-            Unl.assign(0.5*(V + USlow_out))
+            USlow_out.assign(V)
             SlowSolver.solve()
             V.assign(USlow_out)
         #compute difference from initial value
@@ -267,7 +259,8 @@ while t < tmax + 0.5*dt:
 
         #average into V
         ensemble.allreduce(DU, V)
-        U += V
+        cheby2.apply(V, eU, -dt)
+        U += eU
 
     V.assign(U)
 
