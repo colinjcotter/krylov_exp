@@ -132,7 +132,7 @@ class cheby_exp(object):
 
         self.dy.assign(self.T_i)
         Coeff.assign(np.imag(self.ChebCoeffs[1]))
-        self.dy *= -Coeff
+        self.dy.assign(-Coeff*self.dy)
         y += self.dy
 
         for i in range(2, self.ncheb+1):
@@ -161,5 +161,5 @@ class cheby_exp(object):
 
             self.dy.assign(self.T_i)
             Coeff.assign(imag(self.ChebCoeffs[i]))
-            self.dy *= -Coeff
+            self.dy.assign(-Coeff*self.dy)
             y += self.dy
