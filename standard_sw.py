@@ -30,12 +30,13 @@ R = Constant(R0)
 H = Constant(5960.)
 Omega = Constant(7.292e-5)  # rotation rate
 g = Constant(9.8)  # Gravitational constant
+mesh_degree = 3
 mesh = IcosahedralSphereMesh(radius=R0,
-                             refinement_level=ref_level, degree=3)
+                             refinement_level=ref_level, degree=mesh_degree)
 x = SpatialCoordinate(mesh)
 global_normal = as_vector([x[0], x[1], x[2]])
 mesh.init_cell_orientations(global_normal)
-outward_normals = CellNormal(mesh)
+outward_normals = interpolate(CellNormal(mesh),VectorFunctionSpace(mesh,"DG",mesh_degree))
 perp = lambda u: cross(outward_normals, u)
 V1 = FunctionSpace(mesh, "BDM", 2)
 V2 = FunctionSpace(mesh, "DG", 1)
@@ -55,7 +56,7 @@ lambda_x = atan_2(x[1]/R0, x[0]/R0)
 lambda_c = -pi/2.0
 phi_x = asin(x[2]/R0)
 phi_c = pi/6.0
-minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
+minarg = min_value(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
 bexpr = 2000.0*(1 - sqrt(minarg)/rl)
 b = Function(V2, name="Topography")
 b.interpolate(bexpr)
@@ -107,18 +108,20 @@ PVsolver.solve()
 
 #write out initial fields
 mesh_ll = get_latlon_mesh(mesh)
+global_normal = as_vector([0, 0, 1])
+mesh_ll.init_cell_orientations(global_normal)
 file_sw = File(filename+'.pvd', mode="a")
 field_un = Function(
-    functionspaceimpl.WithGeometry(un.function_space(), mesh_ll),
+    functionspaceimpl.WithGeometry.create(un.function_space(), mesh_ll),
     val=un.topological)
 field_etan = Function(
-    functionspaceimpl.WithGeometry(etan.function_space(), mesh_ll),
+    functionspaceimpl.WithGeometry.create(etan.function_space(), mesh_ll),
     val=etan.topological)
 field_PV = Function(
-    functionspaceimpl.WithGeometry(PV.function_space(), mesh_ll),
+    functionspaceimpl.WithGeometry.create(PV.function_space(), mesh_ll),
     val=PV.topological)
 field_b = Function(
-    functionspaceimpl.WithGeometry(b.function_space(), mesh_ll),
+    functionspaceimpl.WithGeometry.create(b.function_space(), mesh_ll),
     val=b.topological)
 if not args.pickup:
     file_sw.write(field_un, field_etan, field_PV, field_b)
@@ -157,7 +160,7 @@ uh = 0.5 * (un + u)
 Upwind = 0.5 * (sign(dot(ubar, n)) + 1)
 K = 0.5 * (inner(0.5 * (un + up), 0.5 * (un + up)))
 both = lambda u: 2*avg(u)
-outward_normals = CellNormal(mesh)
+#outward_normals = CellNormal(mesh)
 perp = lambda arg: cross(outward_normals, arg)
 Ueqn = (inner(u - un, v)*dx + dt*inner(perp(uh)*f, v)*dx
         - dt*inner(perp(grad(inner(v, perp(ubar)))), uh)*dx
