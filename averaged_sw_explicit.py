@@ -10,12 +10,12 @@ import argparse
 
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
-parser.add_argument('--ref_level', type=int, default=4, help='Refinement level of icosahedral grid. Default 4.')
+parser.add_argument('--ref_level', type=int, default=5, help='Refinement level of icosahedral grid. Default 4.')
 parser.add_argument('--space_parallel', type=int, default=4, help='Default 4.')
 parser.add_argument('--tmax', type=float, default=360, help='Final time in hours. Default 24x15=360.')
 parser.add_argument('--dumpt', type=float, default=24, help='Dump time in hours. Default 24.')
 parser.add_argument('--checkt', type=float, default=6, help='Create checkpointing file every checkt hours. Default 6.')
-parser.add_argument('--dt', type=float, default=0.5, help='Timestep for the averaged model in hours. Default 0.5.')
+parser.add_argument('--dt', type=float, default=0.25, help='Timestep for the averaged model in hours. Default 0.5.')
 parser.add_argument('--rho', type=float, default=1, help='Averaging window width as a multiple of dt. Default 1.')
 parser.add_argument('--Mbar', action='store_true', dest='get_Mbar', help='Compute suitable Mbar, print it and exit.')
 parser.add_argument('--ppp', type=float, default=4, help='Points per time-period for averaging.')

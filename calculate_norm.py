@@ -6,8 +6,8 @@ print = PETSc.Sys.Print
 
 #get command arguments
 parser = argparse.ArgumentParser(description='Williamson 5 testcase for averaged propagator.')
-parser.add_argument('--file0', type=str, default='standard0')
-parser.add_argument('--file1', type=str, default='standard1')
+parser.add_argument('--file0', type=str, default='explicit')
+parser.add_argument('--file1', type=str, default='standard')
 args = parser.parse_known_args()
 args = args[0]
 print(args)
@@ -55,7 +55,7 @@ lambda_x = atan_2(x[1]/R0, x[0]/R0)
 lambda_c = -pi/2.0
 phi_x = asin(x[2]/R0)
 phi_c = pi/6.0
-minarg = Min(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
+minarg = min_value(pow(rl, 2), pow(phi_x - phi_c, 2) + pow(lambda_x - lambda_c, 2))
 bexpr = 2000.0*(1 - sqrt(minarg)/rl)
 b = Function(V2, name="Topography")
 b.interpolate(bexpr)
