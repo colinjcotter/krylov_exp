@@ -7,7 +7,7 @@ print = PETSc.Sys.Print
 
 class cheby_exp(object):
     def __init__(self, operator_solver, operator_in, operator_out,
-                 ncheb, tol, L, filter=False, filter_val=0.75):
+                 ncheb, tol, L, filter=False, filter_val=0.75, filter_freq=False):
         """
         Class to apply the exponential of an operator
         using chebyshev approximation
@@ -18,7 +18,7 @@ class cheby_exp(object):
         operator_in: the input to operator_solver
         operator_out: the output to operator_solver
         ncheb: number of Chebyshev polynomials to approximate exp
-        tol: tolerance to compress Chebyshev expansion by 
+        tol: tolerance to compress Chebyshev expansion by
         (removes terms from the high degree end until total L^1 norm
         of removed terms > tol)
         L: approximate exp on range [-L*i, L*i]
@@ -33,8 +33,17 @@ class cheby_exp(object):
         x = L*np.cos(t1)
         fvals = np.exp(1j*x)
 
-        if filter:
-            fvals /= (1 + (x/filter_val/L)**2)**4
+        #Set cut-off frequency
+        eigs = [0.003465, 0.007274, 0.014955] #maximum frequency
+        fL = eigs[0]*60*60
+
+        print("L =", L)
+        if filter_freq:
+            print("filter_freq is on. L =", fL)
+            fvals /= (1 + (x/fL)**2)**4
+        elif filter:
+            print("filter is on. L =", filter_val*L)
+            fvals /= (1 + (x/(filter_val*L))**2)**4
 
         valsUnitDisc = np.concatenate((np.flipud(fvals), fvals[1:-1]))
         FourierCoeffs = fftpack.fft(valsUnitDisc)/ncheb
@@ -42,8 +51,9 @@ class cheby_exp(object):
         self.ChebCoeffs = FourierCoeffs[:ncheb+2]
         self.ChebCoeffs[0] = self.ChebCoeffs[0]/2
         self.ChebCoeffs[-1] = self.ChebCoeffs[-1]/2
-        
+
         #cheby compression
+        print("ncheb before compression", ncheb)
         nrm = 0.
         Compressed = False
         while nrm + abs(self.ChebCoeffs[ncheb+1]) < tol:
@@ -51,8 +61,40 @@ class cheby_exp(object):
             ncheb -= 1
             Compressed = True
         assert Compressed
-
+        print("ncheb after compression", ncheb)
         self.ncheb = ncheb
+        print("ncheb is set to", ncheb)
+
+        #initialise T0
+        A = 0
+        Tnm1 = 1.0
+        Tn = A/(L*1j)
+        fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
+
+        for i in range(2,ncheb+1):
+            Tnm2 = Tnm1
+            Tnm1 = Tn
+            Tn = 2*A*Tnm1/(L*1j) - Tnm2
+            fvals0 += self.ChebCoeffs[i]*Tn
+
+        print("fvals0 before initialisation", fvals0)
+
+        for i in range(len(self.ChebCoeffs)):
+            self.ChebCoeffs[i] = self.ChebCoeffs[i]/fvals0
+
+        #check if fvals0 = 1
+        Tnm1 = 1.0
+        Tn = A/(L*1j)
+        fvals0 = self.ChebCoeffs[0]*Tnm1 + self.ChebCoeffs[1]*Tn
+
+        for i in range(2,ncheb+1):
+            Tnm2 = Tnm1
+            Tnm1 = Tn
+            Tn = 2*A*Tnm1/(L*1j) - Tnm2
+            fvals0 += self.ChebCoeffs[i]*Tn
+
+        print("fvals0 after initialisation", fvals0)
+
         self.L = L
 
         FS = operator_in.function_space()
@@ -64,7 +106,7 @@ class cheby_exp(object):
         self.T_i = Function(FS)
 
         self.dy = Function(FS)
-        
+
     def apply(self, x, y, t):
         L = self.L
         #initially Tm1 contains T_0(A)x
@@ -90,7 +132,7 @@ class cheby_exp(object):
 
         self.dy.assign(self.T_i)
         Coeff.assign(np.imag(self.ChebCoeffs[1]))
-        self.dy *= -Coeff
+        self.dy.assign(-Coeff*self.dy)
         y += self.dy
 
         for i in range(2, self.ncheb+1):
@@ -119,5 +161,5 @@ class cheby_exp(object):
 
             self.dy.assign(self.T_i)
             Coeff.assign(imag(self.ChebCoeffs[i]))
-            self.dy *= -Coeff
+            self.dy.assign(-Coeff*self.dy)
             y += self.dy
